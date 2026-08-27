@@ -1,0 +1,57 @@
+# --- Build output ---
+build/
+out/
+server/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+
+# --- Client-derived game data: NEVER commit ---
+data/
+dbc/
+maps/
+vmaps/
+mmaps/
+Cameras/
+*.mpq
+*.MPQ
+*.m2
+*.wmo
+*.adt
+*.vmtree
+*.vmtile
+*.mmtile
+*.map
+
+# --- Active configs (contain credentials) ---
+config/*.conf
+!config/*.conf.dist
+*.local.conf
+
+# --- Database dumps ---
+sql/dumps/
+TDB_*.7z
+TDB_*.sql
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Editor / OS ---
+.vs/
+.vscode/
+.idea/
+*.user
+Thumbs.db
+desktop.ini
+
+# --- Scratch ---
+tmp/
+scratch/
+
+# --- Extra build trees used for diagnosis ---
+build-*/
