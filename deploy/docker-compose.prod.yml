@@ -75,6 +75,10 @@ services:
       RATE_XP: ${RATE_XP:-5}
       RATE_DROP_ITEM: ${RATE_DROP_ITEM:-5}
       RATE_DROP_MONEY: ${RATE_DROP_MONEY:-5}
+      # 0 makes M2 doodads - trees, fences, wagons, crates - block spell line of sight.
+      # Upstream ships 1, which let a player shoot a target from behind a tree. Set it
+      # back to 1 and restart if false "cannot see target" near small props gets old.
+      LOS_IGNORE_M2: ${LOS_IGNORE_M2:-0}
       REALM_ID: ${REALM_ID:-1}
       # worldserver caches realmlist at startup and uses it to tell the client where to open
       # Cataclysm's second connection after character select. The entrypoint writes the row

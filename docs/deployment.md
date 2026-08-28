@@ -286,6 +286,7 @@ Config di-render ulang saat container start, jadi tidak perlu apa-apa lagi.
 | `RATE_DROP_ITEM_REFERENCED` | 1 | Peluang entri referenced menyala |
 | `RATE_DROP_MONEY` | 5 | Gold dari monster |
 | `RATE_QUEST_MONEY` | 5 | Gold dari quest, termasuk pengganti XP di level maksimal |
+| `LOS_IGNORE_M2` | 0 | `0` = pohon dan properti kayu memblokir tembakan; `1` = perilaku upstream |
 
 `LootStoreItem::Roll` menghitung `chance * qualityModifier` lalu menggulirkannya, dan hasil
 di atas 100 selalu lolos. Pada 50x itu berarti item dengan peluang dasar 2% ke atas menjadi
@@ -318,6 +319,36 @@ $C pull && $C up -d world
 DBUpdater menerapkannya dan mencatat hash-nya di tabel `updates` — idempoten, tidak akan
 diterapkan dua kali. Kalau file yang **sudah** pernah diterapkan diubah isinya, hash-nya
 berubah dan updater otomatis menerapkannya ulang.
+
+**Skema world lebih baru daripada dump TDB.** Jangan menyalin daftar kolom dari
+`server/TDB_full_world_434...sql` — `core/sql/updates/world/4.3.4/` sudah mengubahnya:
+`creature.spawndist` jadi `wander_distance`, `creature.dynamicflags` dan
+`creature_template.gossip_menu_id` dihapus, `creature.unit_flags2` ditambah (NULL = warisi
+dari template), dan `creature_template.exp` jadi `HealthScalingExpansion`. Sumber kebenaran
+adalah query di `ObjectMgr::LoadCreatures` dan prepared statement `WORLD_SEL_CREATURE_TEMPLATE`
+di `WorldDatabase.cpp`, bukan dump-nya.
+
+### Blok ID kustom yang sudah terpakai
+
+| Blok | Dipakai oleh |
+|---|---|
+| `creature_template.entry` 900000 | Heirloom Quartermaster |
+| `creature.guid` 5000000–5000012 | 13 spawn Heirloom Quartermaster |
+
+Entry TDB tertinggi 62454 dan `creature` AUTO_INCREMENT 1022682, jadi kedua blok di atas
+aman dari tabrakan dengan konten resmi.
+
+Dua hal yang paling gampang salah saat menambah NPC kustom berikutnya, keduanya sudah
+dijelaskan panjang di komentar `sql/world/2026_08_28_14_00_heirloom_starter_vendor.sql`:
+
+- **`phaseUseFlags` = 1**, bukan `phaseMask` = 65535. Core ini memakai phasing modern dan
+  tidak pernah membaca `phaseMask`; trik gaya WotLK itu tidak berefek apa-apa. Tanpa
+  `phaseUseFlags` = 1, NPC tidak akan terlihat di zona ter-phase seperti Gilneas, Kezan,
+  Echo Isles, Northshire, atau Ebon Hold.
+- **`npc_vendor.ExtendedCost` = 2** kalau ingin barangnya gratis. Itu satu-satunya baris
+  `ItemExtendedCost.db2` yang tidak mensyaratkan apa pun, dan ia ada di DB2 client sehingga
+  harganya juga tampil 0 di UI. Dengan `ExtendedCost` = 0, harga jatuh kembali ke `BuyPrice`
+  dari DB2 — untuk heirloom hasilnya timpang: helm 1500g, jubah 1200g, sisanya gratis.
 
 ### Ganti kode C++ (nanti, saat playerbot masuk)
 

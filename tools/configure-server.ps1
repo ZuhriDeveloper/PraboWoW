@@ -43,6 +43,13 @@
     *number* of items rolled from a referenced loot template rather than the chance;
     raising that produces absurd stacks from a single kill.
 
+.PARAMETER IgnoreDoodadLos
+    Restore the upstream behaviour where spells pass straight through M2 doodads --
+    trees, fences, wagons, crates -- so only WMO buildings block a shot. Left off here
+    because that let a player fire from behind a tree. Terrain never blocks either way:
+    line of sight is vmap models plus game objects and nothing else, see
+    core/src/server/game/Maps/Map.cpp Map::isInLineOfSight.
+
 .PARAMETER RateQuestMoney
     Multiplier for gold from quest rewards. Also applied to the gold handed out in place
     of experience at the level cap, so "quest gold" means one thing at every level.
@@ -67,6 +74,7 @@ param(
     [double] $RateDropItemReferenced = 1,
     [double] $RateDropMoney          = 5,
     [double] $RateQuestMoney         = 5,
+    [switch] $IgnoreDoodadLos,
     [switch] $NoMmaps,
     [switch] $Force
 )
@@ -99,6 +107,11 @@ if ($NoMmaps) {
     $mmapsReason = 'mmaps detected'
 }
 
+# Against the upstream default of 1. See the -IgnoreDoodadLos help above; the container
+# twin carries the same decision as LOS_IGNORE_M2 in deploy/entrypoint.sh.
+$losIgnoreM2 = '0'
+if ($IgnoreDoodadLos) { $losIgnoreM2 = '1' }
+
 function New-DbInfo {
     param([string] $Database)
     return "$DbHost;$DbPort;$DbUser;$DbPassword;$Database"
@@ -113,6 +126,7 @@ $overrides = @{
         'CharacterDatabaseInfo'  = "`"$(New-DbInfo 'characters')`""
         'HotfixDatabaseInfo'     = "`"$(New-DbInfo 'hotfixes')`""
         'mmap.enablePathFinding' = $mmapsValue
+        'LineOfSight.IgnoreM2'   = $losIgnoreM2
 
         'Rate.XP.Kill'            = $RateXp
         'Rate.XP.Quest'           = $RateXp
@@ -149,6 +163,9 @@ Write-Host ("  data   : {0}" -f $dataDirConf)
 $mmapsLabel = 'off'
 if ($mmapsValue -eq '1') { $mmapsLabel = 'on' }
 Write-Host ("  mmaps  : {0} ({1})" -f $mmapsLabel, $mmapsReason)
+$losLabel = 'blocking (trees and props stop spells)'
+if ($losIgnoreM2 -eq '1') { $losLabel = 'ignored (upstream default)' }
+Write-Host ("  doodads: {0}" -f $losLabel)
 Write-Host ("  rates  : xp {0}x | drop grey/white {1}x, green+ {2}x (ungrouped loot only)" -f $RateXp, $RateDropItemCommon, $RateDropItemQuality)
 Write-Host ("           money kill {0}x, quest {1}x" -f $RateDropMoney, $RateQuestMoney)
 Write-Host ''
