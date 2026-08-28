@@ -163,15 +163,26 @@ ensure_tdb() {
 
 # ── Realm address ────────────────────────────────────────────────────────────────────────
 
-# What the client is told to connect to after authenticating. Without this the realm still
-# advertises 127.0.0.1 from the Fase 1 solo setup and every login dead-ends at character
-# select. Retried in the background because on the very first boot the auth database does not
-# exist yet — worldserver is creating it right now, in this same container's sibling process.
+# What the client is told to connect to after authenticating — and, just as importantly, the
+# address worldserver hands out for the SECOND connection Cataclysm opens after character
+# select (WorldSession::SendConnectToInstance). Without this the realm advertises 127.0.0.1
+# and login dies with "failed to connect 5 times to world socket".
+#
+# worldserver reads realmlist exactly ONCE, in LoadRealmInfo() at startup, and caches it
+# (worldserver/Main.cpp:277). The row therefore has to be correct BEFORE worldserver starts,
+# which is why the world role calls this synchronously up front instead of leaving it to the
+# auth container. authserver re-reads the list while it runs, so a stale row there heals
+# itself; in worldserver it does not — which is how this was found. Login worked all the way
+# to the character screen, then aborted.
+#
+# $1 = number of 10-second attempts. The world role passes a small number: on a first-ever
+# boot the auth database does not exist yet, because worldserver itself is about to create
+# it, and blocking here would deadlock.
 sync_realmlist() {
     [ -n "$REALM_ADDRESS" ] || { log "REALM_ADDRESS not set — leaving realmlist alone"; return; }
 
-    local attempt
-    for attempt in $(seq 1 60); do
+    local attempts=${1:-60} attempt
+    for attempt in $(seq 1 "$attempts"); do
         if mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASSWORD" \
                  --batch --skip-column-names auth \
                  -e "UPDATE realmlist SET address='$REALM_ADDRESS', localAddress='$REALM_LOCAL_ADDRESS', port=$REALM_PORT WHERE id=$REALM_ID;" \
@@ -181,7 +192,11 @@ sync_realmlist() {
         fi
         sleep 10
     done
-    log "WARNING: could not update realmlist after 10 minutes — clients may still be sent to the old address"
+    log "WARNING: realmlist not updated after ${attempts} attempts."
+    log "         On a FIRST EVER boot that is expected — the auth database does not exist yet."
+    log "         The auth container writes the row once it does; then restart THIS container"
+    log "         once so worldserver re-reads it, or character login aborts with"
+    log "         'failed to connect 5 times to world socket'."
 }
 
 # ── Start ────────────────────────────────────────────────────────────────────────────────
@@ -196,6 +211,11 @@ case "$ROLE" in
         log "rates     : xp ${RATE_XP}x, item drop ${RATE_DROP_ITEM}x, money ${RATE_DROP_MONEY}x"
         render_world_conf
         ensure_tdb
+        # Synchronous and deliberately short: worldserver caches realmlist at startup, so the
+        # row must be right before the exec below — but on a first-ever boot there is no auth
+        # database to write to yet, and waiting would deadlock against worldserver's own
+        # DBUpdater, which is the thing that creates it.
+        sync_realmlist 3
         cd "$TDB_DIR"
         exec "$BIN_DIR/worldserver" -c "$CONF_DIR/worldserver.conf"
         ;;
