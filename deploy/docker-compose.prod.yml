@@ -1,0 +1,112 @@
+# ── PraboWoW — Cataclysm 4.3.4 server stack ──────────────────────────────────────────────
+#
+# This file is CANONICAL. vps-infra/apps/renowow/docker-compose.yml is a mirror of it; when
+# you change one, change the other (same arrangement Materia uses).
+#
+# MANUAL stack — deliberately NO watchtower labels. CI still builds and pushes the image on
+# every push to main, but the VPS only moves when you say so:
+#   docker compose -f apps/renowow/docker-compose.yml --env-file apps/renowow/.env pull
+#   docker compose -f apps/renowow/docker-compose.yml --env-file apps/renowow/.env up -d
+#
+# NOT HTTP. WoW speaks raw TCP on 3724/8085, so Caddy is not involved at all — it can only
+# reverse-proxy HTTP. The ports are published straight to the host and opened in ufw
+# (scripts/bootstrap.sh). If the realm address is a domain, its DNS record must be
+# "DNS only" — a Cloudflare-proxied record breaks the game connection.
+
+services:
+  db:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DB_USER:-trinity}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    # sql_mode is MySQL 8's default minus NO_ZERO_DATE / NO_ZERO_IN_DATE / ONLY_FULL_GROUP_BY.
+    # The TDB dump is frozen at January 2022 and carries zero dates that a stock MySQL 8
+    # rejects mid-import, which would leave the world database half-populated. Strictness is
+    # otherwise kept.
+    command: >
+      --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
+      --innodb-buffer-pool-size=${DB_BUFFER_POOL:-1G}
+      --max-allowed-packet=64M
+    volumes:
+      - renowow_db:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - renowow-net
+    # No `ports:` on purpose — the database is reachable only from this stack's network.
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  world:
+    image: ${GHCR_PREFIX}/prabowow-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["worldserver"]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER:-trinity}
+      DB_PASSWORD: ${DB_PASSWORD}
+      RATE_XP: ${RATE_XP:-5}
+      RATE_DROP_ITEM: ${RATE_DROP_ITEM:-5}
+      RATE_DROP_MONEY: ${RATE_DROP_MONEY:-5}
+      REALM_ID: ${REALM_ID:-1}
+    volumes:
+      # Client-derived data: 5.2 GB, uploaded once with tools/upload-client-data.ps1, never
+      # in git and never in the image. Read-only — the server has no business writing here.
+      - ${DATA_PATH:-/srv/renowow/data}:/trinity/data:ro
+      - renowow_tdb:/trinity/tdb
+      - renowow_logs:/trinity/logs
+    # Both flags are load-bearing, not cosmetic. worldserver's CLI thread reads stdin; when
+    # stdin is not a real console it gets EOF and shuts the process down cleanly with
+    # "Halting process..." (documented in docs/phase-1-checklist.md). Without a TTY the
+    # container exits a few seconds after start and it looks exactly like a crash.
+    # They also keep `docker attach` giving a usable TC> console for GM commands.
+    tty: true
+    stdin_open: true
+    mem_limit: ${WORLD_MEM_LIMIT:-4g}
+    networks:
+      - renowow-net
+
+  auth:
+    image: ${GHCR_PREFIX}/prabowow-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: ["authserver"]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3724:3724"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER:-trinity}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REALM_ID: ${REALM_ID:-1}
+      # What the client is told to connect to after login. On first boot the auth database
+      # may not exist yet, so the entrypoint retries this in the background for 10 minutes.
+      REALM_ADDRESS: ${REALM_ADDRESS}
+      REALM_PORT: ${REALM_PORT:-8085}
+    volumes:
+      - renowow_logs:/trinity/logs
+    tty: true
+    stdin_open: true
+    mem_limit: ${AUTH_MEM_LIMIT:-512m}
+    networks:
+      - renowow-net
+
+volumes:
+  renowow_db:      # precious: accounts and characters live here — backed up by scripts/backup-db.sh
+  renowow_tdb:     # TDB .sql, downloaded on first start; safe to delete after the import
+  renowow_logs:
+
+networks:
+  renowow-net:
+    driver: bridge

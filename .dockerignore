@@ -1,0 +1,28 @@
+# The build context is the repo root, because the image needs both core/ (source) and
+# sql/world/ (custom updates). Everything else must be excluded or the daemon would ship
+# gigabytes to the builder before the first instruction runs.
+
+# 6 GB of client-derived data and local build output. Never in an image.
+server/
+build/
+build-*/
+out/
+
+# Read-only submodules that only Fase 2 reads, and only on the dev machine.
+vendor/
+
+# Not needed to compile the server.
+docs/
+tools/
+config/
+.claude/
+.github/
+.git/
+.gitignore
+.gitmodules
+CLAUDE.md
+
+# core/ is needed, but not its git metadata or test tree.
+core/.git
+core/tests
+core/doc
