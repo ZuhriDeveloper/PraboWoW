@@ -14,16 +14,30 @@
     tools\bootstrap-db.ps1 creates (trinity/trinity on 127.0.0.1:3306), so they are
     only rewritten when a non-default password is supplied.
 
-.PARAMETER EnableMmaps
-    Turn pathfinding on. Leave it off until tools\extract-client-data.ps1 has been
-    run without -SkipMmaps, otherwise the world loads but every creature and bot
-    falls back to straight-line movement.
+    Pathfinding is decided by looking at server\data\mmaps rather than by a flag.
+    An earlier version had an -EnableMmaps switch that defaulted to off, which meant
+    regenerating with -Force silently turned pathfinding back off: the world still
+    loaded, but every creature and bot moved in straight lines through walls, and the
+    symptom showed up nowhere near the cause. What is on disk is the source of truth.
+
+.PARAMETER NoMmaps
+    Force pathfinding off even though mmaps are present. For isolating movement
+    behaviour during debugging; not something a normal setup needs.
+
+.PARAMETER RateXp
+    Multiplier for kill, quest and exploration experience.
+
+.PARAMETER RateDropItem
+    Multiplier for item drop chance across every quality tier.
+    Note this does NOT touch Rate.Drop.Item.ReferencedAmount, which multiplies the
+    *number* of items rolled from a referenced loot template rather than the chance;
+    raising that produces absurd stacks from a single kill.
 
 .EXAMPLE
     .\tools\configure-server.ps1
 
 .EXAMPLE
-    .\tools\configure-server.ps1 -EnableMmaps
+    .\tools\configure-server.ps1 -Force -RateXp 1 -RateDropItem 1 -RateDropMoney 1
 #>
 
 [CmdletBinding()]
@@ -33,7 +47,10 @@ param(
     [string] $DbPassword = 'trinity',
     [string] $DbHost     = '127.0.0.1',
     [int]    $DbPort     = 3306,
-    [switch] $EnableMmaps,
+    [double] $RateXp        = 5,
+    [double] $RateDropItem  = 5,
+    [double] $RateDropMoney = 5,
+    [switch] $NoMmaps,
     [switch] $Force
 )
 
@@ -47,8 +64,23 @@ $logsDir = Join-Path $ServerDir 'logs'
 $dataDirConf = $dataDir -replace '\\', '/'
 $logsDirConf = $logsDir -replace '\\', '/'
 
-$mmapsValue = '0'
-if ($EnableMmaps) { $mmapsValue = '1' }
+# Decide pathfinding from what is actually on disk, not from a flag someone has to
+# remember to pass. mmaps_generator writes one .mmtile per tile plus a .mmap per map,
+# so "the directory has files in it" is a sound test.
+$mmapsDir     = Join-Path $dataDir 'mmaps'
+$mmapsPresent = $false
+if (Test-Path $mmapsDir) {
+    $mmapsPresent = $null -ne (@(Get-ChildItem $mmapsDir -File -ErrorAction SilentlyContinue) | Select-Object -First 1)
+}
+
+$mmapsValue  = '0'
+$mmapsReason = 'no mmaps in ' + $mmapsDir
+if ($NoMmaps) {
+    $mmapsReason = 'disabled explicitly with -NoMmaps'
+} elseif ($mmapsPresent) {
+    $mmapsValue  = '1'
+    $mmapsReason = 'mmaps detected'
+}
 
 function New-DbInfo {
     param([string] $Database)
@@ -63,8 +95,21 @@ $overrides = @{
         'WorldDatabaseInfo'      = "`"$(New-DbInfo 'world')`""
         'CharacterDatabaseInfo'  = "`"$(New-DbInfo 'characters')`""
         'HotfixDatabaseInfo'     = "`"$(New-DbInfo 'hotfixes')`""
-        # Off until mmaps are generated -- see -EnableMmaps.
         'mmap.enablePathFinding' = $mmapsValue
+
+        'Rate.XP.Kill'            = $RateXp
+        'Rate.XP.Quest'           = $RateXp
+        'Rate.XP.Explore'         = $RateXp
+
+        'Rate.Drop.Item.Poor'      = $RateDropItem
+        'Rate.Drop.Item.Normal'    = $RateDropItem
+        'Rate.Drop.Item.Uncommon'  = $RateDropItem
+        'Rate.Drop.Item.Rare'      = $RateDropItem
+        'Rate.Drop.Item.Epic'      = $RateDropItem
+        'Rate.Drop.Item.Legendary' = $RateDropItem
+        'Rate.Drop.Item.Artifact'  = $RateDropItem
+        'Rate.Drop.Item.Referenced' = $RateDropItem
+        'Rate.Drop.Money'          = $RateDropMoney
     }
     'authserver.conf' = [ordered]@{
         'LogsDir'           = "`"$logsDirConf`""
@@ -76,7 +121,10 @@ Write-Host ''
 Write-Host '=== PraboWoW server configuration ===' -ForegroundColor Cyan
 Write-Host ("  server : {0}" -f $ServerDir)
 Write-Host ("  data   : {0}" -f $dataDirConf)
-Write-Host ("  mmaps  : {0}" -f $(if ($EnableMmaps) { 'enabled' } else { 'disabled (no mmaps generated yet)' }))
+$mmapsLabel = 'off'
+if ($mmapsValue -eq '1') { $mmapsLabel = 'on' }
+Write-Host ("  mmaps  : {0} ({1})" -f $mmapsLabel, $mmapsReason)
+Write-Host ("  rates  : xp {0}x, item drop {1}x, money {2}x" -f $RateXp, $RateDropItem, $RateDropMoney)
 Write-Host ''
 
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
