@@ -1,0 +1,33 @@
+-- Sacrifices (quest 14212) - Crowley's Horse never leaves the barricade
+--
+-- The mount jumps the barricade and then stands still forever. Cause is
+-- creature_template.StaticFlags = 256 = CREATURE_STATIC_FLAG_SESSILE
+-- ("permanently roots the creature in place", CreatureData.h:91).
+--
+-- Sessile makes Creature::InitializeMovementCapabilities root the creature
+-- (Creature.cpp:2691) AND makes Unit::SetControlled refuse to ever unroot it:
+--
+--   case UNIT_STATE_ROOT:
+--       if (... || (IsCreature() && ToCreature()->IsSessile()))
+--           return;                                    // Unit.cpp:10997
+--
+-- So npc_crowleys_horse's `me->SetControlled(false, UNIT_STATE_ROOT)` before the
+-- barricade jump is a silent no-op and the horse stays rooted for the whole ride.
+-- That splits the two movement calls the script makes:
+--
+--   * MoveJump  -> GenericMovementGenerator, no root guard, and SetRooted skips
+--     StopMoving for parabolic splines -> the jump still plays;
+--   * MovePath  -> WaypointMovementGenerator, whose IsAllowedToMove bails on
+--     UNIT_STATE_NOT_MOVE (WaypointMovementGenerator.cpp:350), and
+--     UNIT_STATE_NOT_MOVE contains UNIT_STATE_ROOT (Unit.h:271) -> never moves.
+--
+-- Which is exactly the observed behaviour: the player ends up parked on
+-- CrowleysHorseJumpPos (-1714.762, 1673.16, 20.49182) and nothing happens.
+--
+-- 35905 (King Greymane's Horse) is deliberately NOT touched. It is sessile too,
+-- but it drives with MoveSmoothPath -> GenericMovementGenerator, which has no
+-- root guard, so it works today. Clearing the flag there would unroot its first
+-- leg, and on a VEHICLE_SEAT_FLAG_CAN_CONTROL seat the client would then fight
+-- the scripted spline. Leave a working ride alone.
+
+UPDATE `creature_template` SET `StaticFlags`=`StaticFlags` & ~256 WHERE `entry` IN (35231,44428);
