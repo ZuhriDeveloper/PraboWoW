@@ -20,13 +20,22 @@
 -- Reserved custom id blocks: creature_template entry 900000, creature guid 5000000-5000012.
 
 -- Level 85, faction 35 (friendly to all), immune to PC and NPC: nothing can pull
--- or kill it in a starting zone. Model 12935 is a goblin merchant - neutral enough
--- to stand in an Alliance and a Horde starting village alike.
+-- or kill it in a starting zone.
 DELETE FROM `creature_template` WHERE `entry`=900000;
-INSERT INTO `creature_template` (`entry`, `modelid1`, `name`, `femaleName`, `subname`, `minlevel`, `maxlevel`,
+INSERT INTO `creature_template` (`entry`, `name`, `femaleName`, `subname`, `minlevel`, `maxlevel`,
   `HealthScalingExpansion`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `scale`, `BaseAttackTime`,
   `RangeAttackTime`, `unit_class`, `unit_flags`, `type`, `AIName`, `RegenHealth`, `ScriptName`) VALUES
-(900000, 12935, 'Heirloom Quartermaster', '', 'Heirlooms', 85, 85, 3, 35, 128, 1, 1.14286, 1, 2000, 2000, 1, 768, 7, '', 1, '');
+(900000, 'Heirloom Quartermaster', '', 'Heirlooms', 85, 85, 3, 35, 128, 1, 1.14286, 1, 2000, 2000, 1, 768, 7, '', 1, '');
+
+-- The model lives here, NOT in `creature_template`.`modelid1`: that column still
+-- exists but ObjectMgr::LoadCreatureTemplateModels reads `creature_template_model`
+-- instead, and a template with no row here fails to spawn with
+--   "Creature (Entry: 900000) has no model defined in table `creature_template`, can't load."
+-- Display 12935 is a goblin merchant (Gigget Zipcoil) - neutral enough to stand in
+-- an Alliance and a Horde starting village alike. Probability 1, single model.
+DELETE FROM `creature_template_model` WHERE `CreatureID`=900000;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `Probability`, `VerifiedBuild`) VALUES
+(900000, 0, 12935, 1, 0);
 
 -- Placed 2 yards along the direction the character faces on login, turned around to
 -- face them. The z is the untouched playercreateinfo z, which is guaranteed valid ground.

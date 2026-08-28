@@ -324,9 +324,21 @@ berubah dan updater otomatis menerapkannya ulang.
 `server/TDB_full_world_434...sql` — `core/sql/updates/world/4.3.4/` sudah mengubahnya:
 `creature.spawndist` jadi `wander_distance`, `creature.dynamicflags` dan
 `creature_template.gossip_menu_id` dihapus, `creature.unit_flags2` ditambah (NULL = warisi
-dari template), dan `creature_template.exp` jadi `HealthScalingExpansion`. Sumber kebenaran
-adalah query di `ObjectMgr::LoadCreatures` dan prepared statement `WORLD_SEL_CREATURE_TEMPLATE`
-di `WorldDatabase.cpp`, bukan dump-nya.
+dari template), dan `creature_template.exp` jadi `HealthScalingExpansion`.
+
+Yang paling menipu: **`creature_template.modelid1` masih ada sebagai kolom tapi sudah tidak
+dibaca.** Model pindah ke tabel `creature_template_model` (`ObjectMgr::LoadCreatureTemplateModels`).
+Mengisi `modelid1` saja tidak error waktu SQL-nya diterapkan — errornya baru muncul di log
+worldserver saat spawn, dan bunyinya justru menunjuk balik ke kolom yang sudah mati:
+
+```
+Creature (Entry: 900000) does not have any existing display id in creature_template_model.
+Creature (Entry: 900000) has no model defined in table `creature_template`, can't load.
+```
+
+Sumber kebenaran untuk daftar kolom adalah query di `ObjectMgr::Load*`, bukan dump TDB dan
+bukan pula prepared statement `WORLD_SEL_CREATURE_TEMPLATE` di `WorldDatabase.cpp` — yang
+terakhir itu masih menyebut `modelid1..4` padahal loader-nya tidak memakainya.
 
 ### Blok ID kustom yang sudah terpakai
 
