@@ -179,6 +179,15 @@ Dari Windows:
 .\tools\upload-client-data.ps1 -Folders dbc,maps,vmaps,Cameras
 ```
 
+> **Jalankan dari sesi PowerShell, bukan `powershell -File`.** Skrip di `tools/` memakai
+> `[CmdletBinding()]` dan `$PSScriptRoot` di default parameternya, dan kombinasi
+> `[CmdletBinding()]` + `-File` membuat `$PSScriptRoot` kosong di dalam blok `param()` pada
+> Windows PowerShell 5.1 — salah satu saja tidak bermasalah, butuh keduanya. Gejalanya:
+> `Join-Path : Cannot bind argument to parameter 'Path' because it is an empty string`.
+> `upload-client-data.ps1` sudah kebal (default-nya diselesaikan di badan skrip), tapi
+> `bootstrap-db.ps1`, `build-core.ps1`, `configure-server.ps1`, `create-account.ps1`, dan
+> `extract-client-data.ps1` masih memakai pola lama — jalankan semuanya dari sesi.
+
 Skrip memakai rsync di dalam WSL kalau ada (resumable), dan jatuh ke tar-over-ssh kalau
 tidak. Untuk membuatnya resumable, pasang rsync sekali di WSL:
 
