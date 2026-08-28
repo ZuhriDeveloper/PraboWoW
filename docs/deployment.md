@@ -9,7 +9,7 @@ Runbook operasional. Untuk alasan di balik keputusannya, lihat `docs/adr/`.
 | VPS | Jakarta | `145.79.10.227` |
 | Realm (client menyambung ke sini) | DNS A record | `wow.zuhri-dev.com` |
 | authserver | container `renowow-auth-1` | TCP `3724` |
-| worldserver | container `renowow-world-1` | TCP `8085` |
+| worldserver | container `renowow-world-1` | TCP `8085` + `8086` |
 | MySQL 8 | container `renowow-db-1` | hanya jaringan internal, **tidak dipublish** |
 | Data client | bind mount host | `/srv/renowow/data` (5,2 GB, read-only di container) |
 | Stack compose | repo `vps-infra` | `/srv/vps-infra/apps/renowow/` |
@@ -21,7 +21,15 @@ sebagai satu app stack di situ.
 **Caddy tidak terlibat.** Protokol WoW adalah TCP mentah, sedangkan Caddy hanya bisa
 mem-proxy HTTP. Port game dipublish langsung ke host.
 
-**Port 3724/8085 tidak dibuka oleh ufw, dan tidak perlu dibuka.** Docker menulis rule
+**Tiga port, bukan dua.** Selain `3724` (auth) dan `8085` (world), Cataclysm membuka
+koneksi world **kedua** setelah pilih karakter, ke `InstanceServerPort` = **8086**.
+`WorldSession::SendConnectToInstance` mengambil alamat dari realmlist lalu **menimpa
+portnya** dengan nilai config itu (`WorldSession.cpp:794-795`). Port ini tidak punya padanan
+di WotLK, jadi pengetahuan dari setup 3.3.5 tidak akan memunculkannya — dan gejalanya
+menyesatkan: daftar realm dan layar karakter bekerja sempurna, karena keduanya hanya memakai
+koneksi pertama.
+
+**Port 3724/8085/8086 tidak dibuka oleh ufw, dan tidak perlu dibuka.** Docker menulis rule
 iptables-nya sendiri yang dievaluasi *sebelum* ufw, jadi port yang dipublish container
 sudah terjangkau begitu container naik — `ufw allow` untuk port itu tidak melakukan apa-apa
 (baris di `bootstrap.sh` disimpan sebagai dokumentasi niat, bukan sebagai mekanisme).
@@ -321,7 +329,7 @@ hanya membuat dump membengkak.
 | Container `world` keluar beberapa detik setelah start, log berakhir `Halting process...` | thread CLI worldserver dapat EOF karena stdin bukan konsol sungguhan | pastikan `tty: true` **dan** `stdin_open: true` ada di compose |
 | Server naik sampai `ready...` lalu mati **tepat saat client menyambung**, `ARC4.cpp:31 ASSERTION FAILED` | enkripsi paket dunia memakai RC4; OpenSSL 3 memindahkannya ke legacy provider yang tidak termuat | pastikan `/usr/lib/x86_64-linux-gnu/ossl-modules/legacy.so` ada di image (build sudah menguji ini) |
 | Login berhasil tapi mentok di layar realm / character select | `realmlist.address` masih `127.0.0.1` | cek `REALM_ADDRESS` di `.env`, lalu `$C restart auth` |
-| Bisa pilih karakter, lalu **"World server is down"**; log berisi `failed to connect 5 times to world socket` | Cataclysm membuka koneksi world **kedua** setelah pilih karakter, dan alamatnya diambil dari salinan `realmlist` yang worldserver cache saat start (`LoadRealmInfo()`, `worldserver/Main.cpp:277`). Kalau `world` naik sebelum baris realmlist benar, ia mengirim client ke `127.0.0.1`. | `$C restart world`. Sejak entrypoint menulis realmlist sebelum start, ini hanya bisa terjadi pada boot pertama sebuah instalasi baru. |
+| Bisa pilih karakter, lalu **"World server is down"** atau **"You have been disconnected"**; log berisi `non existent socket 1` dan `failed to connect 5 times to world socket` | Koneksi world **kedua** gagal. Dua sebab berbeda bisa menghasilkan gejala identik: **(a)** port `8086` tidak dipublish atau tertutup di firewall — port itulah yang dipakai, bukan 8085; **(b)** `realmlist` masih `127.0.0.1` saat worldserver start, karena ia meng-cache-nya sekali di `LoadRealmInfo()` (`worldserver/Main.cpp:277`). | Pastikan `8086` ada di `ports:` compose **dan** terbuka di firewall provider. Untuk (b), `$C restart world`. |
 | Client tidak bisa menyambung ke 3724 sama sekali | firewall provider, atau DNS di-proxy Cloudflare | buka 3724/8085 di panel Hostinger; set record ke DNS only |
 | `Database World is empty, auto populating` lalu error "File ... is missing" | unduhan TDB gagal | `docker volume rm renowow_tdb` lalu `$C up -d world` untuk mengunduh ulang |
 | Impor TDB berhenti di tengah dengan error tanggal | `sql_mode` MySQL 8 menolak zero date | pastikan `--sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION` ada di compose |
