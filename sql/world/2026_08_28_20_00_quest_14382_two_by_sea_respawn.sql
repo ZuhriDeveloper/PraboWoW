@@ -1,0 +1,24 @@
+-- Two By Sea (quest 14382, Gilneas) - both objectives sit behind a 2h respawn
+--
+-- The quest needs one kill each on Captain Anson (36397) and Captain Morris
+-- (36399), and TDB gives each of them exactly one spawn on map 654:
+--
+--   guid 255724  36397 Captain Anson   (-2100.52, 2691.79, 1.39731)  spawntimesecs 7200
+--   guid 255728  36399 Captain Morris  (-2197.34, 2594.98, 1.80690)  spawntimesecs 7200
+--
+-- Neither is pooled (pool_members / spawn_group / linked_respawn are all empty
+-- for these guids) and neither is summoned by a script, so the single spawn is
+-- the only copy on the realm. With 7200s that means one character every two
+-- hours can finish the quest - anyone else, player or bot alt, just waits at an
+-- empty deck.
+--
+-- 30s matches what the same zone already uses for its other single-spawn quest
+-- targets (Cynthia 36287, Ashley 36288, James 36289), so this stays consistent
+-- with existing Gilneas data instead of inventing a new value. The 7200s default
+-- is realm-wide noise on map 654 (3075 of its spawns carry it), not a deliberate
+-- setting for these two.
+--
+-- Keyed on `id`, not on the guids, so it still holds if the spawns are ever
+-- reimported with fresh guids.
+
+UPDATE `creature` SET `spawntimesecs`=30 WHERE `id` IN (36397,36399);
