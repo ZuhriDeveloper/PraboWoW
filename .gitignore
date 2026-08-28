@@ -55,3 +55,6 @@ scratch/
 
 # --- Extra build trees used for diagnosis ---
 build-*/
+
+# Player bundle produced by tools/build-launcher.ps1
+dist/
