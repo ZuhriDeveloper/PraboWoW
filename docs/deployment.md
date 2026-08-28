@@ -7,7 +7,7 @@ Runbook operasional. Untuk alasan di balik keputusannya, lihat `docs/adr/`.
 | Komponen | Lokasi | Alamat |
 |---|---|---|
 | VPS | Jakarta | `145.79.10.227` |
-| Realm (client menyambung ke sini) | DNS A record | `wow.renovin.co.id` |
+| Realm (client menyambung ke sini) | DNS A record | `wow.zuhri-dev.com` |
 | authserver | container `renowow-auth-1` | TCP `3724` |
 | worldserver | container `renowow-world-1` | TCP `8085` |
 | MySQL 8 | container `renowow-db-1` | hanya jaringan internal, **tidak dipublish** |
@@ -32,7 +32,7 @@ dipakai `scripts/allow-cloudflare-ips.sh` untuk 80/443.
 Yang masih bisa menghalangi adalah **firewall provider (Hostinger)**, yang berada di luar
 host. Kalau `Test-NetConnection` gagal padahal container jelas listening, periksa panel.
 
-**DNS harus "DNS only".** Kalau record `wow.renovin.co.id` di-proxy Cloudflare (awan
+**DNS harus "DNS only".** Kalau record `wow.zuhri-dev.com` di-proxy Cloudflare (awan
 oranye), client tidak akan bisa menyambung — proxy Cloudflare hanya melayani HTTP.
 
 ## Alur deploy
@@ -109,7 +109,7 @@ satu gigabyte kembali, dan server tetap main.
 
 ### 1. DNS
 
-A record `wow.renovin.co.id` → `145.79.10.227`, **DNS only** (awan abu-abu).
+A record `wow.zuhri-dev.com` → `145.79.10.227`, **DNS only** (awan abu-abu).
 
 Cloudflare akan memperingatkan:
 
@@ -252,7 +252,7 @@ kolom `AccountID` / `SecurityLevel` / `RealmID`, bukan `id` / `gmlevel`.
 
 ### 5. Client
 
-`Config.WTF` → `SET portal "wow.renovin.co.id"`, lalu jalankan lewat
+`Config.WTF` → `SET portal "wow.zuhri-dev.com"`, lalu jalankan lewat
 `client_launcher_64` seperti biasa (menyuntik `client_patcher_64.dll` ke memori, tidak
 menyentuh file client).
 
