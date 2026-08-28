@@ -42,12 +42,24 @@ param(
     [string]   $VpsHost    = '145.79.10.227',
     [string]   $VpsUser    = 'root',
     [string]   $RemotePath = '/srv/renowow/data',
-    [string]   $DataDir    = (Join-Path $PSScriptRoot '..\server\data'),
+    [string]   $DataDir,
     [string[]] $Folders    = @('dbc', 'maps', 'vmaps', 'mmaps', 'Cameras'),
     [switch]   $NoWsl
 )
 
 $ErrorActionPreference = 'Stop'
+
+# $PSScriptRoot is empty inside a param() default when BOTH conditions hold: the script
+# declares [CmdletBinding()] and it is launched with `powershell -File`. Either one alone is
+# fine, which is why the same pattern in configure-server.ps1 never failed -- that one gets
+# run as `tools\configure-server.ps1` from a session. Resolving the default here instead
+# sidesteps the combination, and $MyInvocation.MyCommand.Path is populated either way.
+if (-not $DataDir) {
+    $scriptDir = $PSScriptRoot
+    if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $DataDir = Join-Path $scriptDir '..\server\data'
+}
+
 $DataDir = [System.IO.Path]::GetFullPath($DataDir)
 $target  = "$VpsUser@$VpsHost"
 
