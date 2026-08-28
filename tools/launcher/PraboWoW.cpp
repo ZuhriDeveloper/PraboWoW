@@ -1,11 +1,16 @@
 // PraboWoW.exe — one-click launcher handed to players.
 //
-// It exists so nobody has to be walked through editing Config.wtf. The player drops three
-// files into their own 4.3.4 client folder and double-clicks this one:
+// It exists so nobody has to be walked through editing Config.wtf. The player copies the
+// whole bundle into their own 4.3.4 client folder and double-clicks this one:
 //
 //     PraboWoW.exe              <- this program
 //     client_launcher_64.exe    <- built from TrinityCore, injects the patch
 //     client_patcher_64.dll     <- the patch itself
+//     libssl-3-x64.dll          <- client_launcher links OpenSSL
+//     libcrypto-3-x64.dll       <-   "
+//     msvcp140.dll              <- both TrinityCore tools use the dynamic CRT
+//     vcruntime140.dll          <-   "
+//     vcruntime140_1.dll        <-   "
 //
 // What it does, in order: verify it is sitting in a real client folder, point
 // WTF\Config.wtf at our realm (backing the original up once), then hand off to
@@ -40,6 +45,18 @@ namespace
     constexpr wchar_t const* kLauncherExe  = L"client_launcher_64.exe";
     constexpr wchar_t const* kPatcherDll   = L"client_patcher_64.dll";
     constexpr wchar_t const* kBackupSuffix = L".prabowow-backup";
+
+    // client_launcher and client_patcher are built against the dynamic CRT and OpenSSL, so
+    // they need these beside them. Windows reports a missing one with a dialog that names
+    // the DLL but blames the program ("reinstalling may fix this problem"), which sends
+    // players looking in the wrong place -- so check first and say what is actually wrong.
+    constexpr wchar_t const* kRuntimeDlls[] = {
+        L"libssl-3-x64.dll",
+        L"libcrypto-3-x64.dll",
+        L"msvcp140.dll",
+        L"vcruntime140.dll",
+        L"vcruntime140_1.dll",
+    };
 
     void Fail(std::string const& message)
     {
@@ -202,14 +219,29 @@ int main()
         { kPatcherDll,  "Missing. It must sit in this same folder, next to client_launcher_64.exe." },
     };
 
+    auto narrow = [](wchar_t const* wide) {
+        std::string out;
+        for (wchar_t const* c = wide; *c; ++c)
+            out.push_back(static_cast<char>(*c));
+        return out;
+    };
+
     for (Requirement const& req : required)
     {
         if (!fs::exists(clientDir / req.file))
         {
-            std::string name;
-            for (wchar_t const* p = req.file; *p; ++p)
-                name.push_back(static_cast<char>(*p));
-            Fail(name + " was not found here.\n           " + req.hint);
+            Fail(narrow(req.file) + " was not found here.\n           " + req.hint);
+            return 1;
+        }
+    }
+
+    for (wchar_t const* dll : kRuntimeDlls)
+    {
+        if (!fs::exists(clientDir / dll))
+        {
+            Fail(narrow(dll) + " is missing from this folder.\n"
+                 "           Copy ALL the files you were given into the game folder,\n"
+                 "           not just PraboWoW.exe. The launcher cannot run without them.");
             return 1;
         }
     }
