@@ -67,6 +67,11 @@ services:
       RATE_DROP_ITEM: ${RATE_DROP_ITEM:-5}
       RATE_DROP_MONEY: ${RATE_DROP_MONEY:-5}
       REALM_ID: ${REALM_ID:-1}
+      # worldserver caches realmlist at startup and uses it to tell the client where to open
+      # Cataclysm's second connection after character select. The entrypoint writes the row
+      # before starting the server, so this must be set here too, not only on `auth`.
+      REALM_ADDRESS: ${REALM_ADDRESS}
+      REALM_PORT: ${REALM_PORT:-8085}
     volumes:
       # Client-derived data: 5.2 GB, uploaded once with tools/upload-client-data.ps1, never
       # in git and never in the image. Read-only — the server has no business writing here.
