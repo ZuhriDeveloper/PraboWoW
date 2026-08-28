@@ -56,5 +56,9 @@ scratch/
 # --- Extra build trees used for diagnosis ---
 build-*/
 
-# Player bundle produced by tools/build-launcher.ps1
+# Player bundle produced by tools/build-launcher.ps1, plus any hand-made copy of it.
+# Regenerable, so it does not belong in git -- and `client/` is barred by name on purpose:
+# the day someone drops a real game client there, rule 3 in CLAUDE.md must already hold.
 dist/
+client/
+client.zip

@@ -32,8 +32,13 @@ BIN_DIR="${BIN_DIR:-/opt/trinitycore/bin}"
 SOURCE_DIR="${SOURCE_DIR:-/opt/trinitycore}"
 
 RATE_XP="${RATE_XP:-5}"
-RATE_DROP_ITEM="${RATE_DROP_ITEM:-5}"
+# Grey and white are deliberately separate from green-and-above. One knob for all seven
+# quality tiers cannot express "more gear, not more vendor trash".
+RATE_DROP_ITEM_COMMON="${RATE_DROP_ITEM_COMMON:-1}"
+RATE_DROP_ITEM_QUALITY="${RATE_DROP_ITEM_QUALITY:-10}"
+RATE_DROP_ITEM_REFERENCED="${RATE_DROP_ITEM_REFERENCED:-1}"
 RATE_DROP_MONEY="${RATE_DROP_MONEY:-5}"
+RATE_QUEST_MONEY="${RATE_QUEST_MONEY:-$RATE_DROP_MONEY}"
 
 REALM_ID="${REALM_ID:-1}"
 REALM_ADDRESS="${REALM_ADDRESS:-}"
@@ -102,15 +107,35 @@ render_world_conf() {
     set_conf "$conf" 'Rate.XP.Quest'   "$RATE_XP"
     set_conf "$conf" 'Rate.XP.Explore' "$RATE_XP"
 
-    set_conf "$conf" 'Rate.Drop.Item.Poor'       "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Normal'     "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Uncommon'   "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Rare'       "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Epic'       "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Legendary'  "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Artifact'   "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Item.Referenced' "$RATE_DROP_ITEM"
-    set_conf "$conf" 'Rate.Drop.Money'           "$RATE_DROP_MONEY"
+    # Grey and white stay blizzlike. Multiplying vendor trash fills bags without moving
+    # progression, and it dilutes the thing that is actually being boosted.
+    set_conf "$conf" 'Rate.Drop.Item.Poor'   "$RATE_DROP_ITEM_COMMON"
+    set_conf "$conf" 'Rate.Drop.Item.Normal' "$RATE_DROP_ITEM_COMMON"
+
+    # Green and above. Note what this does NOT touch: LootTemplate::LootGroup::Roll
+    # (core/src/server/game/Loot/LootMgr.cpp:395) picks one item from a group by raw chance
+    # and never calls LootStoreItem::Roll, where the quality modifier lives. Boss and dungeon
+    # loot is almost entirely grouped, so this multiplier governs ungrouped world and trash
+    # drops only. Boosting boss loot means editing loot templates, not this number.
+    set_conf "$conf" 'Rate.Drop.Item.Uncommon'  "$RATE_DROP_ITEM_QUALITY"
+    set_conf "$conf" 'Rate.Drop.Item.Rare'      "$RATE_DROP_ITEM_QUALITY"
+    set_conf "$conf" 'Rate.Drop.Item.Epic'      "$RATE_DROP_ITEM_QUALITY"
+    set_conf "$conf" 'Rate.Drop.Item.Legendary' "$RATE_DROP_ITEM_QUALITY"
+    set_conf "$conf" 'Rate.Drop.Item.Artifact'  "$RATE_DROP_ITEM_QUALITY"
+
+    # Stays at 1 on purpose. This multiplies the chance a *reference entry* fires, and
+    # LootMgr.cpp:616 passes `rate` through into the referenced template, so the items
+    # inside still get their own quality modifier. Raising both would apply the boost twice
+    # to the same drop. Rate.Drop.Item.ReferencedAmount is left untouched for a different
+    # reason: it multiplies the item COUNT, and raising it yields absurd stacks per kill.
+    set_conf "$conf" 'Rate.Drop.Item.Referenced' "$RATE_DROP_ITEM_REFERENCED"
+
+    # Money from kills, then from quest rewards. The Max.Level variant is the gold handed
+    # out in place of experience once a character is at the level cap; it tracks the same
+    # rate so "quest gold" means one thing at every level.
+    set_conf "$conf" 'Rate.Drop.Money'                   "$RATE_DROP_MONEY"
+    set_conf "$conf" 'Rate.Quest.Money.Reward'           "$RATE_QUEST_MONEY"
+    set_conf "$conf" 'Rate.Quest.Money.Max.Level.Reward' "$RATE_QUEST_MONEY"
 
     # Container-only keys, no counterpart in configure-server.ps1: on Windows the DBUpdater
     # finds the source tree and the mysql client through CMake's built-in paths, but this
@@ -208,7 +233,16 @@ log "database  : $DB_USER@$DB_HOST:$DB_PORT"
 
 case "$ROLE" in
     worldserver)
-        log "rates     : xp ${RATE_XP}x, item drop ${RATE_DROP_ITEM}x, money ${RATE_DROP_MONEY}x"
+        log "rates     : xp ${RATE_XP}x | drop grey/white ${RATE_DROP_ITEM_COMMON}x, green+ ${RATE_DROP_ITEM_QUALITY}x (ungrouped loot only)"
+        log "            : money kill ${RATE_DROP_MONEY}x, quest ${RATE_QUEST_MONEY}x"
+
+        # A stale RATE_DROP_ITEM in an existing .env would otherwise be read as "applied"
+        # while doing nothing at all -- the worst kind of silence.
+        if [ -n "${RATE_DROP_ITEM:-}" ]; then
+            log "WARNING: RATE_DROP_ITEM is set but no longer used. It has been split into"
+            log "         RATE_DROP_ITEM_COMMON (grey/white) and RATE_DROP_ITEM_QUALITY"
+            log "         (green and above). Remove it from .env to silence this."
+        fi
         render_world_conf
         ensure_tdb
         # Synchronous and deliberately short: worldserver caches realmlist at startup, so the
