@@ -35,7 +35,7 @@ RATE_XP="${RATE_XP:-5}"
 # Grey and white are deliberately separate from green-and-above. One knob for all seven
 # quality tiers cannot express "more gear, not more vendor trash".
 RATE_DROP_ITEM_COMMON="${RATE_DROP_ITEM_COMMON:-1}"
-RATE_DROP_ITEM_QUALITY="${RATE_DROP_ITEM_QUALITY:-10}"
+RATE_DROP_ITEM_QUALITY="${RATE_DROP_ITEM_QUALITY:-100}"
 RATE_DROP_ITEM_REFERENCED="${RATE_DROP_ITEM_REFERENCED:-1}"
 RATE_DROP_MONEY="${RATE_DROP_MONEY:-5}"
 RATE_QUEST_MONEY="${RATE_QUEST_MONEY:-$RATE_DROP_MONEY}"
