@@ -36,7 +36,9 @@ services:
       - renowow-net
     # No `ports:` on purpose — the database is reachable only from this stack's network.
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      # CMD-SHELL, not CMD: the exec form has no shell, so $MYSQL_ROOT_PASSWORD would be
+      # passed to mysqladmin as that literal string and the probe would never go healthy.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
