@@ -1,0 +1,31 @@
+-- Greymane Manor gate (quest 14465) - the second leaf, follow-up to 2026_08_29_00_30
+--
+-- Two objects carry the same gate model (displayId 9063) on the exact same spot in
+-- front of the manor, and only one of them was dealt with:
+--
+--   guid 235514  196401  type 0 DOOR    state 1  autoClose(Data2)    3  PhaseGroup 431->no, 379
+--   guid 236493  196864  type 1 BUTTON  state 0  autoClose(Data2) 5000  PhaseId 184   (already open)
+--
+-- 196401 was left shut on the argument that PhaseGroup 379 = {169,170,171,172} is a
+-- set no player holds during 14465. That argument is wrong: **169 is DEFAULT_PHASE**
+-- (PhaseShift.h:31). PhasingHandler::InitDbPhaseShift stamps PhaseShiftFlags::Unphased
+-- on any DB phase shift that contains it (PhasingHandler.cpp:453), and PhaseShift::CanSee
+-- returns true as soon as both sides are Unphased - so this leaf is visible and solid
+-- for every player who is not currently quest-phased in Gilneas, not just for the
+-- 169..172 chapters.
+--
+-- And it can never be opened by clicking it. GameObjectTemplate::GetAutoCloseTime hands
+-- back the raw Data2 in milliseconds - 4.x does no unit conversion
+-- (GameObjectData.h:587) - so UseDoorOrButton sets m_cooldownTime = now + 3 ms
+-- (GameObject.cpp:1792) and the very next world tick passes the >= test in the
+-- GO_ACTIVATED branch, calling ResetDoorOrButton -> SetGoState(m_prevGoState) = shut.
+-- The gate flickers open for well under a frame; from the player's side right-clicking
+-- it simply does nothing. Identical to the Duskhaven leaf 196399 fixed on 2026-08-28.
+--
+-- Same remedy, same reasoning: spawn it open so m_prevGoState is ACTIVE and any reset
+-- returns it to open, and add GO_FLAG_NOT_SELECTABLE (0x10) so nothing can trigger the
+-- 3 ms close or the despawn-on-use path. 196401 has exactly one spawn and it is this
+-- gate, so the template addon is safe to touch.
+
+UPDATE `gameobject` SET `state`=0 WHERE `guid`=235514;
+UPDATE `gameobject_template_addon` SET `flags`=`flags`|16 WHERE `entry`=196401;
