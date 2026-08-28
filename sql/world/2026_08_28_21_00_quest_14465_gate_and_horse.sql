@@ -1,0 +1,74 @@
+-- To Greymane Manor (quest 14465, Gilneas) - the gate slams shut, the horse cannot be ridden
+--
+-- Two independent blockers on the Duskhaven -> Greymane Manor leg. Both hit while
+-- the player carries spell 68483, which spell_area grants in zone 4714 for the whole
+-- window "14386 rewarded .. 14466 not rewarded" - that is, all of quest 14465. The
+-- aura is SPELL_AURA_PHASE (261) with MiscValueB 183, so the player's phase is 183.
+--
+--
+-- 1) The gate on the road out of Duskhaven (-1817.8, 2333.4, 36.3)
+--
+-- TDB stacks two objects carrying the same gate model (displayId 9063) on that exact
+-- spot, both in PhaseGroup 431 = phases {181,182,183} (PhaseXPhaseGroup.dbc), so both
+-- are visible in phase 183:
+--
+--   guid 235520  196399  type 0 DOOR    state 1  spawntimesecs  300  autoClose(Data2) 3
+--   guid 236492  196863  type 1 BUTTON  state 1  spawntimesecs 7200  autoClose(Data2) 5000
+--
+-- Both spawn in GO_STATE_READY (=1), and GameObject::SetGoState enables collision for
+-- exactly that state (GameObject.cpp:2787), so both leaves are solid.
+--
+-- Clicking either one cannot get the player through:
+--
+--   * GameObjectTemplate::GetAutoCloseTime hands back the raw Data2 in milliseconds -
+--     4.x does no unit conversion (GameObjectData.h:588). So the DOOR re-closes 3 ms
+--     after use: UseDoorOrButton sets m_cooldownTime = now + 3 (GameObject.cpp:1792)
+--     and the very next world tick passes the >= test in the GO_ACTIVATED branch
+--     (GameObject.cpp:1082), calling ResetDoorOrButton -> SetGoState(m_prevGoState),
+--     which is the DB `state` captured at Create (GameObject.cpp:708) = closed.
+--   * the BUTTON does stay open for its 5000 ms, but the DOOR beside it never opened,
+--     so its collision keeps blocking regardless.
+--
+-- Which is the reported behaviour exactly: the gate visibly opens and is shut again
+-- before anyone can ride through.
+--
+-- Spawning both leaves open (GO_STATE_ACTIVE = 0) also makes m_prevGoState ACTIVE, so
+-- a reset now returns them to open instead of closed. GO_FLAG_NOT_SELECTABLE (0x10)
+-- on top removes them from the client's click targets - gameobject_template_addon.flags
+-- is applied to GAMEOBJECT_FLAGS at spawn (GameObject.cpp:695) - so nothing can trigger
+-- the 5 s close or the despawn-on-use path a used door falls into. Each of the two
+-- entries has exactly one spawn, and both of them are this gate, so touching the
+-- template addon is safe.
+--
+-- The second gate pair at the manor itself (-1681.8, 2507.6) is deliberately left
+-- alone: 196401 sits in PhaseGroup 379 = {169,170,171,172} and 196864 in phase 184,
+-- neither of which a player holds during 14465, so there is nothing spawned there for
+-- them to walk into.
+--
+--
+-- 2) Mountain Horse (36540) cannot be mounted
+--
+-- The horses Lorna Crowley points at in "Horses for Duskhaven" (14463 - the quest that
+-- hands out 14465) are set up correctly except for the one flag that makes the client
+-- offer the click:
+--
+--   creature_template 36540:  VehicleId 527, npcflag 0
+--   npc_spellclick_spells:    36540 -> 94654, SPELL_AURA_CONTROL_VEHICLE (236), cast_flags 1
+--   Vehicle 527 -> seat 6086, flags 0x6200880B (CAN_ENTER_OR_EXIT | CAN_CONTROL)
+--
+-- Without UNIT_NPC_FLAG_SPELLCLICK (0x01000000) the client never sends CMSG_SPELLCLICK,
+-- so Unit::HandleSpellClick (Unit.cpp:12356) is never reached and right-clicking the
+-- horse does nothing at all. The loader will not paper over it either -
+-- ObjectMgr::LoadNPCSpellClickSpells only ever strips that flag, never adds it
+-- (ObjectMgr.cpp:7990).
+--
+-- Only 36540 is touched here. 286 templates in this DB have spellclick rows without the
+-- flag, and most are legitimate creature-only vehicle accessories - the loader's own
+-- comment calls that case out - so a blanket update would be wrong.
+
+-- 1) open both leaves of the Duskhaven gate and take them out of the click targets
+UPDATE `gameobject` SET `state`=0 WHERE `guid` IN (235520,236492);
+UPDATE `gameobject_template_addon` SET `flags`=`flags`|16 WHERE `entry` IN (196399,196863);
+
+-- 2) let players spellclick the Mountain Horse into its vehicle seat
+UPDATE `creature_template` SET `npcflag`=`npcflag`|16777216 WHERE `entry`=36540;
