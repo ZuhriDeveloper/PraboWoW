@@ -1,0 +1,39 @@
+-- Gasping for Breath (quest 14395, Gilneas) - Drowning Watchman cannot be clicked
+--
+-- The quest wants 4 rescues credited against 36450 (Drowning Watchman Credit). The
+-- rescue itself is a spellclick on Drowning Watchman (36440), and every piece of that
+-- is already in the database except the one flag that makes the client offer the click:
+--
+--   creature_template 36440:      npcflag 0, unit_flags 512, AIName 'SmartAI'
+--   creature_template_addon:      auras 68730 (Drowning)
+--   npc_spellclick_spells:        36440 -> 68735, cast_flags 1 (clicker is the caster)
+--   conditions (source type 18):  clicker must have 14395 active and not yet complete
+--   50 spawns, all phase 183, z between -33 and -0.3 (the flooded part of Duskhaven)
+--
+-- The intended chain works out: 68735 puts SPELL_AURA_SET_VEHICLE_ID (296) with
+-- MiscValue 520 on the clicker, turning the player into a vehicle - Vehicle 520 has
+-- one seat, 5966, flags 0x120C810B, CAN_ENTER_OR_EXIT set and CAN_CONTROL clear, i.e.
+-- a passenger seat. SMART_EVENT_ON_SPELLCLICK (73) then makes the watchman cast Ride
+-- Vehicle (47020) on the clicker so he rides the player to shore.
+--
+-- Without UNIT_NPC_FLAG_SPELLCLICK (0x01000000) the client never sends CMSG_SPELLCLICK,
+-- so Unit::HandleSpellClick (Unit.cpp:12356) is never reached, the SmartAI event never
+-- fires, and clicking the watchman does nothing at all.
+--
+-- That the flag is missing rather than deliberately absent is settled by TDB's own
+-- script: smart_scripts row (36440,0,1) is SMART_ACTION_REMOVE_NPC_FLAG with param
+-- 16777216 - "On spellclick - Self: Remove npc flags SPELLCLICK". A flag that was never
+-- set cannot be removed, so the script is written against a template that carries it.
+-- The removal is per-spawned-creature and comes back on respawn from the template, so
+-- setting it here keeps the one-rescue-per-watchman behaviour intact.
+--
+-- unit_flags 512 is UNIT_FLAG_IMMUNE_TO_NPC, which has nothing to do with selection,
+-- and is left as is.
+--
+-- Same defect class as Mountain Horse 36540 in
+-- 2026_08_28_21_00_quest_14465_gate_and_horse.sql. Still untouched in Gilneas, all
+-- without spellclick conditions or an ON_SPELLCLICK script to corroborate them:
+-- Chance (36459), Glaive Thrower (38150), Captured Riding Bat (38615), Hippogryph
+-- (43747).
+
+UPDATE `creature_template` SET `npcflag`=`npcflag`|16777216 WHERE `entry`=36440;
