@@ -320,6 +320,68 @@ DBUpdater menerapkannya dan mencatat hash-nya di tabel `updates` — idempoten, 
 diterapkan dua kali. Kalau file yang **sudah** pernah diterapkan diubah isinya, hash-nya
 berubah dan updater otomatis menerapkannya ulang.
 
+### Bugfix SQL cepat, tanpa menunggu CI
+
+Alur di atas benar tapi mahal untuk perbaikan satu baris: satu putaran CI penuh plus tarik
+layer image baru, dan CI hanya berjalan pada push ke `main` (`.github/workflows/deploy.yml`),
+jadi branch fitur tidak menghasilkan image sama sekali. Untuk iterasi cepat, terapkan SQL-nya
+langsung ke database lalu muat ulang tabelnya di server yang sedang hidup.
+
+**File SQL-nya tetap wajib di-commit.** Penerapan manual tidak tercatat di tabel `updates`,
+jadi perbaikannya hilang begitu database dibangun ulang dari TDB.
+
+```bash
+scp sql/world/2026_08_28_17_00_contoh.sql root@145.79.10.227:/tmp/
+```
+
+```bash
+docker exec -i renowow-db-1 sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" world' < /tmp/2026_08_28_17_00_contoh.sql
+```
+
+`MYSQL_USER` dan `MYSQL_PASSWORD` sudah ada sebagai environment di container `db`, jadi
+kredensialnya tidak perlu ditulis di command line dan tidak masuk shell history.
+
+Lalu muat ulang tabel yang tersentuh — **dari dalam game sebagai GM**, bukan dari konsol
+container:
+
+| Yang diubah | Perintah |
+|---|---|
+| `creature_template` | `.reload creature_template <entry> [<entry> ...]` |
+| `smart_scripts` | `.reload smart_scripts` |
+| `conditions` | `.reload conditions` |
+| `creature_text` | `.reload creature_text` |
+| `quest_template` | `.reload quest_template` |
+| `npc_vendor` | `.reload npc_vendor` |
+| `spell_area` | `.reload spell_area` |
+
+Daftar lengkapnya ada di `core/src/server/scripts/Commands/cs_reload.cpp`.
+
+**`.reload creature_template` tidak menyentuh creature yang sudah ter-spawn.** Ia memperbarui
+template di memori dan query cache-nya saja; objek `Creature` yang sudah berdiri di dunia
+tetap memakai stat lamanya. Untuk NPC yang di-summon segar setiap kali — vehicle quest,
+misalnya — itu sudah cukup.
+
+Yang tidak bisa ditolong reload sama sekali adalah **`AIName`**: AI dipasang sekali saat
+creature dibuat (`AIM_Initialize`), jadi mengubah `AIName` NPC yang sudah ter-spawn butuh
+restart:
+
+```bash
+$C restart world
+```
+
+Restart penuh makan ~10 detik ("World initialized in 0 minutes 8 seconds") dan memutus semua
+pemain yang sedang online.
+
+**Jangan pakai `docker attach` untuk menjalankan perintah GM.** `attach` meneruskan Ctrl+C ke
+proses, dan worldserver mematikan diri dengan rapi ("Halting process...") begitu menerimanya;
+restart policy lalu menghidupkannya lagi sehingga di log terlihat persis seperti crash. Sudah
+dua kali kejadian. Kalau memang harus lewat konsol, lepasnya dengan **Ctrl-P lalu Ctrl-Q**.
+
+Sesudah perbaikannya terbukti jalan, commit dan merge ke `main` seperti biasa. DBUpdater akan
+menerapkan file yang sama sekali lagi saat image barunya turun lalu mencatat hash-nya; karena
+isi file selalu idempoten (`UPDATE`, atau `DELETE` diikuti `INSERT`), penerapan kedua itu tidak
+berefek apa-apa.
+
 **Skema world lebih baru daripada dump TDB.** Jangan menyalin daftar kolom dari
 `server/TDB_full_world_434...sql` — `core/sql/updates/world/4.3.4/` sudah mengubahnya:
 `creature.spawndist` jadi `wander_distance`, `creature.dynamicflags` dan
