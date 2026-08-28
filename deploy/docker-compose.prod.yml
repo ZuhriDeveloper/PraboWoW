@@ -59,6 +59,15 @@ services:
         condition: service_healthy
     ports:
       - "8085:8085"
+      # 8086 is NOT optional and has no WotLK equivalent, which is exactly why it gets
+      # missed. Cataclysm opens a SECOND world connection after character select, and
+      # WorldSession::SendConnectToInstance overwrites the realm's port with
+      # InstanceServerPort (default 8086, worldserver.conf.dist:165) before telling the
+      # client where to go. With only 8085 published the client is sent to a closed port,
+      # retries five times and aborts login with "failed to connect 5 times to world
+      # socket" — while the realm list and the character screen work perfectly, because
+      # those only ever use the first connection.
+      - "8086:8086"
     environment:
       DB_HOST: db
       DB_USER: ${DB_USER:-trinity}
