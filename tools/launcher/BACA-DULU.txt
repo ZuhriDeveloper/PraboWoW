@@ -1,0 +1,74 @@
+=====================================================================
+  PraboWoW - Cara Main
+=====================================================================
+
+Yang kamu butuhkan: client World of Warcraft Cataclysm versi 4.3.4.15595
+(punya sendiri). Versi lain tidak akan jalan - launcher memeriksanya dan
+akan menolak.
+
+
+LANGKAH 1 - Salin tiga file ini ke folder client kamu
+---------------------------------------------------------------------
+
+    PraboWoW.exe
+    client_launcher_64.exe
+    client_patcher_64.dll
+
+Folder yang benar adalah yang berisi "Wow-64.exe". Ketiganya harus
+berada di folder yang sama.
+
+
+LANGKAH 2 - Klik dua kali PraboWoW.exe
+---------------------------------------------------------------------
+
+Selesai. Program akan mengatur sendiri alamat server, lalu membuka game.
+
+Saat pertama kali dijalankan, ia mengunduh beberapa modul dari internet.
+Itu hanya terjadi sekali; sesudahnya tidak perlu koneksi tambahan.
+
+
+LANGKAH 3 - Login
+---------------------------------------------------------------------
+
+Pakai username dan password yang diberikan pemilik server. Keduanya
+maksimal 16 karakter dan tidak membedakan huruf besar/kecil.
+
+
+=====================================================================
+  Kalau bermasalah
+=====================================================================
+
+"Wow-64.exe was not found here"
+    PraboWoW.exe ada di folder yang salah. Pindahkan ke folder yang
+    berisi Wow-64.exe. Kalau client kamu hanya punya Wow.exe tanpa
+    Wow-64.exe, berarti itu client 32-bit dan tidak didukung.
+
+"could not write WTF\Config.wtf"
+    Client terpasang di Program Files, tempat yang tidak bisa ditulis
+    tanpa izin admin. Pindahkan folder client ke lokasi lain
+    (misalnya C:\Games\), atau klik kanan PraboWoW.exe lalu pilih
+    "Run as administrator" - cukup sekali.
+
+"client_launcher_64.exe would not start"
+    Biasanya antivirus. Launcher menyuntikkan patch ke memori game,
+    dan sebagian antivirus menandai pola itu. Izinkan file tersebut,
+    lalu coba lagi.
+
+"Client version different than 4.3.4.15595"
+    Client kamu bukan versi yang benar. Harus persis 4.3.4.15595.
+
+Game tidak menyambung sama sekali
+    Kabari pemilik server - kemungkinan server sedang mati.
+
+
+=====================================================================
+  Catatan
+=====================================================================
+
+Program ini TIDAK mengubah file game kamu. Patch-nya hanya hidup di
+memori selama game berjalan. Satu-satunya file yang disentuh adalah
+WTF\Config.wtf, itu pun hanya satu baris (alamat server), dan file
+aslinya disalin lebih dulu ke Config.wtf.prabowow-backup.
+
+Untuk kembali ke pengaturan semula, ganti nama file backup itu menjadi
+Config.wtf.

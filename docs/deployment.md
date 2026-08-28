@@ -276,6 +276,32 @@ docker compose -f apps/renowow/docker-compose.yml --env-file apps/renowow/.env u
 
 Config di-render ulang saat container start, jadi tidak perlu apa-apa lagi.
 
+#### Rate yang berlaku
+
+| Variabel `.env` | Nilai | Mengatur |
+|---|---|---|
+| `RATE_XP` | 5 | XP dari kill, quest, dan eksplorasi |
+| `RATE_DROP_ITEM_COMMON` | 1 | Drop abu-abu dan putih (Poor, Normal) |
+| `RATE_DROP_ITEM_QUALITY` | 10 | Drop hijau ke atas (Uncommon sampai Artifact) |
+| `RATE_DROP_ITEM_REFERENCED` | 1 | Peluang entri referenced menyala |
+| `RATE_DROP_MONEY` | 5 | Gold dari monster |
+| `RATE_QUEST_MONEY` | 5 | Gold dari quest, termasuk pengganti XP di level maksimal |
+
+**Yang TIDAK dipengaruhi `RATE_DROP_ITEM_QUALITY`, dan ini penting:** loot bergrup.
+`LootTemplate::LootGroup::Roll` (`core/src/server/game/Loot/LootMgr.cpp:395`) memilih satu
+item dari grup berdasarkan chance mentah dan tidak pernah memanggil `LootStoreItem::Roll`,
+tempat pengali kualitas hidup. Di Cataclysm hampir semua loot boss dan dungeon berbentuk
+grup, jadi 10x hanya terasa pada drop mob dunia dan trash. **Jangan menguji rate ini di boss
+dungeon** — hasilnya akan terlihat seperti kegagalan padahal memang begitu desainnya.
+Memperbanyak loot boss butuh perubahan loot template di database, bukan angka config.
+
+`RATE_DROP_ITEM_REFERENCED` sebaiknya tetap 1. `LootMgr.cpp:616` meneruskan flag rate ke
+dalam referenced template, jadi item di dalamnya sudah mendapat pengali kualitasnya sendiri;
+menaikkan keduanya membuat boost terhitung dua kali pada drop yang sama.
+
+`Rate.Drop.Item.ReferencedAmount` sengaja tidak pernah disentuh — ia mengalikan *jumlah*
+item, bukan peluangnya, dan menaikkannya menghasilkan tumpukan absurd dari satu kill.
+
 ### Tambah SQL world baru
 
 Taruh file di `sql/world/`, commit, push. CI membangun image baru, lalu di VPS:

@@ -27,17 +27,31 @@
 .PARAMETER RateXp
     Multiplier for kill, quest and exploration experience.
 
-.PARAMETER RateDropItem
-    Multiplier for item drop chance across every quality tier.
-    Note this does NOT touch Rate.Drop.Item.ReferencedAmount, which multiplies the
+.PARAMETER RateDropItemCommon
+    Multiplier for grey and white (Poor, Normal) drop chance. Kept separate from the
+    tiers below because multiplying vendor trash fills bags without moving progression.
+
+.PARAMETER RateDropItemQuality
+    Multiplier for green and above (Uncommon through Artifact) drop chance.
+
+    This governs UNGROUPED loot only. LootTemplate::LootGroup::Roll
+    (core/src/server/game/Loot/LootMgr.cpp:395) picks one item from a group by raw
+    chance and never consults the quality modifier, and boss and dungeon loot is almost
+    entirely grouped. Boosting that means editing loot templates, not this number.
+
+    Neither of these touches Rate.Drop.Item.ReferencedAmount, which multiplies the
     *number* of items rolled from a referenced loot template rather than the chance;
     raising that produces absurd stacks from a single kill.
+
+.PARAMETER RateQuestMoney
+    Multiplier for gold from quest rewards. Also applied to the gold handed out in place
+    of experience at the level cap, so "quest gold" means one thing at every level.
 
 .EXAMPLE
     .\tools\configure-server.ps1
 
 .EXAMPLE
-    .\tools\configure-server.ps1 -Force -RateXp 1 -RateDropItem 1 -RateDropMoney 1
+    .\tools\configure-server.ps1 -Force -RateXp 1 -RateDropItemQuality 1 -RateDropMoney 1
 #>
 
 [CmdletBinding()]
@@ -47,9 +61,12 @@ param(
     [string] $DbPassword = 'trinity',
     [string] $DbHost     = '127.0.0.1',
     [int]    $DbPort     = 3306,
-    [double] $RateXp        = 5,
-    [double] $RateDropItem  = 5,
-    [double] $RateDropMoney = 5,
+    [double] $RateXp                 = 5,
+    [double] $RateDropItemCommon     = 1,
+    [double] $RateDropItemQuality    = 10,
+    [double] $RateDropItemReferenced = 1,
+    [double] $RateDropMoney          = 5,
+    [double] $RateQuestMoney         = 5,
     [switch] $NoMmaps,
     [switch] $Force
 )
@@ -101,15 +118,23 @@ $overrides = @{
         'Rate.XP.Quest'           = $RateXp
         'Rate.XP.Explore'         = $RateXp
 
-        'Rate.Drop.Item.Poor'      = $RateDropItem
-        'Rate.Drop.Item.Normal'    = $RateDropItem
-        'Rate.Drop.Item.Uncommon'  = $RateDropItem
-        'Rate.Drop.Item.Rare'      = $RateDropItem
-        'Rate.Drop.Item.Epic'      = $RateDropItem
-        'Rate.Drop.Item.Legendary' = $RateDropItem
-        'Rate.Drop.Item.Artifact'  = $RateDropItem
-        'Rate.Drop.Item.Referenced' = $RateDropItem
-        'Rate.Drop.Money'          = $RateDropMoney
+        'Rate.Drop.Item.Poor'       = $RateDropItemCommon
+        'Rate.Drop.Item.Normal'     = $RateDropItemCommon
+
+        'Rate.Drop.Item.Uncommon'   = $RateDropItemQuality
+        'Rate.Drop.Item.Rare'       = $RateDropItemQuality
+        'Rate.Drop.Item.Epic'       = $RateDropItemQuality
+        'Rate.Drop.Item.Legendary'  = $RateDropItemQuality
+        'Rate.Drop.Item.Artifact'   = $RateDropItemQuality
+
+        # Left at 1 by default. LootMgr.cpp:616 passes the rate flag into the referenced
+        # template, so items inside still get their own quality modifier -- raising both
+        # would apply the boost twice to the same drop.
+        'Rate.Drop.Item.Referenced' = $RateDropItemReferenced
+
+        'Rate.Drop.Money'                   = $RateDropMoney
+        'Rate.Quest.Money.Reward'           = $RateQuestMoney
+        'Rate.Quest.Money.Max.Level.Reward' = $RateQuestMoney
     }
     'authserver.conf' = [ordered]@{
         'LogsDir'           = "`"$logsDirConf`""
@@ -124,7 +149,8 @@ Write-Host ("  data   : {0}" -f $dataDirConf)
 $mmapsLabel = 'off'
 if ($mmapsValue -eq '1') { $mmapsLabel = 'on' }
 Write-Host ("  mmaps  : {0} ({1})" -f $mmapsLabel, $mmapsReason)
-Write-Host ("  rates  : xp {0}x, item drop {1}x, money {2}x" -f $RateXp, $RateDropItem, $RateDropMoney)
+Write-Host ("  rates  : xp {0}x | drop grey/white {1}x, green+ {2}x (ungrouped loot only)" -f $RateXp, $RateDropItemCommon, $RateDropItemQuality)
+Write-Host ("           money kill {0}x, quest {1}x" -f $RateDropMoney, $RateQuestMoney)
 Write-Host ''
 
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
