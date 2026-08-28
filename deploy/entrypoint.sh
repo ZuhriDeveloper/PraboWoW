@@ -46,6 +46,12 @@ REALM_LOCAL_ADDRESS="${REALM_LOCAL_ADDRESS:-$REALM_ADDRESS}"
 REALM_PORT="${REALM_PORT:-8085}"
 
 NO_MMAPS="${NO_MMAPS:-0}"
+
+# Deliberately 0, against the upstream default of 1. Upstream lets spells pass straight
+# through every M2 doodad, so a player could shoot a target from behind a tree, a fence
+# or a wagon -- only WMO buildings blocked. Terrain still never blocks: line of sight is
+# vmap models plus game objects and nothing else (core Map.cpp, Map::isInLineOfSight).
+LOS_IGNORE_M2="${LOS_IGNORE_M2:-0}"
 TDB_AUTO_DOWNLOAD="${TDB_AUTO_DOWNLOAD:-1}"
 TDB_VERSION="${TDB_VERSION:-434.22011}"
 TDB_ASSET="${TDB_ASSET:-TDB_full_434.22011_2022_01_09.7z}"
@@ -101,6 +107,7 @@ render_world_conf() {
     set_conf "$conf" 'CharacterDatabaseInfo' "$(db_info characters)"
     set_conf "$conf" 'HotfixDatabaseInfo'    "$(db_info hotfixes)"
     set_conf "$conf" 'mmap.enablePathFinding' "$mmaps_value"
+    set_conf "$conf" 'LineOfSight.IgnoreM2'   "$LOS_IGNORE_M2"
     set_conf "$conf" 'RealmID'               "$REALM_ID"
 
     set_conf "$conf" 'Rate.XP.Kill'    "$RATE_XP"
@@ -229,6 +236,7 @@ sync_realmlist() {
 log "role      : $ROLE"
 log "data      : $DATA_DIR"
 log "mmaps     : $([ "$mmaps_value" = 1 ] && echo on || echo off) ($mmaps_reason)"
+log "doodad LoS: $([ "$LOS_IGNORE_M2" = 0 ] && echo "blocking (trees and props stop spells)" || echo "ignored (upstream default)")"
 log "database  : $DB_USER@$DB_HOST:$DB_PORT"
 
 case "$ROLE" in

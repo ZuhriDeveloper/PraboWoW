@@ -11,6 +11,7 @@ Prefix commit:
 | `[build]` | penyesuaian sistem build, tidak mengubah perilaku runtime |
 | `[hook]` | titik sisip untuk playerbot |
 | `[fix]` | perbaikan bug upstream yang memblokir kita |
+| `[tune]` | perilaku server yang sengaja dibedakan dari upstream, digerbangi config |
 
 ---
 
@@ -156,3 +157,77 @@ tetap aktif.
 
 Ya, dan kuat: `mapextractor` tidak bisa dipakai sama sekali di toolchain MSVC ini,
 perbaikannya mengikuti preseden mereka sendiri, dan tidak ada kaitannya dengan playerbot.
+
+
+---
+
+## `[tune]` Jadikan doodad M2 memblokir line of sight spell
+
+**File:** `src/server/game/Spells/Spell.cpp`, `src/server/game/World/World.h`,
+`src/server/game/World/World.cpp`, `src/server/worldserver/worldserver.conf.dist`
+**Config:** `LineOfSight.IgnoreM2` (default `.dist` tetap `1` = perilaku upstream)
+
+### Masalah
+
+Pemain melaporkan bisa menembak musuh dari balik pohon dan objek kayu di Northshire.
+Bukan masalah data: vmaps lengkap (17652 file, 140 `.vmtree`, identik di VPS dan lokal)
+dan `.gps` di lokasi kejadian melaporkan `VMap: 1`.
+
+Pembongkaran tile `000_32_48` pada koordinat pemain (`X -8869.7, Y -116.65`) menunjukkan
+sebabnya. Dalam radius 35 yard hanya ada **satu WMO** (`Nsabbey.wmo`, 13,2 yd) — sisanya
+seluruhnya M2: `Elwynntreecanopy02/04`, `Elwynntreemid01`, `Stormwindgypsywagon01`,
+`Elwynnpine01`, lalu barrel, crate, sack, jug, jar. Gameobject di sekitar hanya tiga
+(satu Mailbox, dua Wooden Bench, ~40 yd), jadi bukan dynamic tree.
+
+Sepuluh pemakaian `VMAP::ModelIgnoreFlags::M2` di `Spell.cpp` membuat **semua** pengecekan
+LOS spell melewatkan model M2. Yang lain tidak: default parameter
+`WorldObject::IsWithinLOS`/`IsWithinLOSInMap` adalah `ModelIgnoreFlags::Nothing`
+(`Object.h:404-405`), jadi penglihatan creature sudah menghitung doodad. Hanya spell
+yang keluar dari aturan.
+
+### Perbaikan
+
+Satu helper di `Spell.cpp` yang menyaring flag itu, dipakai oleh dua overload
+`Spell::IsWithinLOS` (jalur untuk 9 dari 10 pemakaian) dan oleh satu pemakaian langsung
+`corpse->IsWithinLOSInMap`:
+
+```cpp
+static VMAP::ModelIgnoreFlags ResolveLineOfSightIgnoreFlags(VMAP::ModelIgnoreFlags ignoreFlags)
+{
+    if (sWorld->getBoolConfig(CONFIG_LINE_OF_SIGHT_IGNORE_M2))
+        return ignoreFlags;
+
+    return VMAP::ModelIgnoreFlags(uint32(ignoreFlags) & ~uint32(VMAP::ModelIgnoreFlags::M2));
+}
+```
+
+Menyaring bit `M2` saja, bukan mengembalikan `Nothing`, supaya flag lain yang mungkin
+ditambahkan upstream tidak ikut hilang.
+
+Default di `.dist` sengaja dibiarkan `1` supaya core telanjang tetap berperilaku upstream.
+Yang membalikkannya adalah lapisan deploy: `LOS_IGNORE_M2=0` di `deploy/entrypoint.sh` dan
+`$losIgnoreM2 = '0'` di `tools/configure-server.ps1`. Pola yang sama dengan rate loot —
+keputusan server hidup ada di luar submodule.
+
+### Yang TIDAK diperbaiki
+
+**Terrain tetap tidak pernah memblokir.** `Map::isInLineOfSight`
+(`src/server/game/Maps/Map.cpp:1577`) hanya menyusun `LINEOFSIGHT_CHECK_VMAP` (model
+WMO/M2) dan `LINEOFSIGHT_CHECK_GOBJECT` (dynamic tree). Heightmap ADT tidak ikut sama
+sekali, jadi bukit dan tanggul tembus berapa pun tingginya. Menambahkannya berarti
+mengubah arsitektur collision, bukan menyetel flag.
+
+### Risiko
+
+Sedang, dan ini pertukaran yang disengaja. Hull collision M2 kasar, jadi berdiri rapat
+dengan tong atau peti kecil bisa memunculkan `SPELL_FAILED_LINE_OF_SIGHT` yang terasa
+salah. Itu alasan upstream mengabaikannya. Karena digerbangi config, membalikkannya cukup
+`LOS_IGNORE_M2=1` di `.env` lalu restart container — tanpa rebuild image.
+
+Perlu diperhatikan juga: perubahan ini mengenai bot. Bot memakai jalur `Spell` yang sama,
+jadi target di balik pohon akan gagal di-cast dan strategy harus benar-benar mendekat.
+
+### Layak diusulkan ke upstream?
+
+Tidak. Ini keputusan rasa main, bukan bug. Yang mungkin layak adalah config-nya sendiri —
+upstream saat ini mengunci perilaku itu dalam kode tanpa jalan keluar.
