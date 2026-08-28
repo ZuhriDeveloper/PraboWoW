@@ -282,10 +282,15 @@ Config di-render ulang saat container start, jadi tidak perlu apa-apa lagi.
 |---|---|---|
 | `RATE_XP` | 5 | XP dari kill, quest, dan eksplorasi |
 | `RATE_DROP_ITEM_COMMON` | 1 | Drop abu-abu dan putih (Poor, Normal) |
-| `RATE_DROP_ITEM_QUALITY` | 10 | Drop hijau ke atas (Uncommon sampai Artifact) |
+| `RATE_DROP_ITEM_QUALITY` | 50 | Drop hijau ke atas (Uncommon sampai Artifact) |
 | `RATE_DROP_ITEM_REFERENCED` | 1 | Peluang entri referenced menyala |
 | `RATE_DROP_MONEY` | 5 | Gold dari monster |
 | `RATE_QUEST_MONEY` | 5 | Gold dari quest, termasuk pengganti XP di level maksimal |
+
+`LootStoreItem::Roll` menghitung `chance * qualityModifier` lalu menggulirkannya, dan hasil
+di atas 100 selalu lolos. Pada 50x itu berarti item dengan peluang dasar 2% ke atas menjadi
+**pasti jatuh**, sedangkan yang 1% menjadi sekitar setengah. Bukan bug kalau mob dunia sering
+menjatuhkan sesuatu.
 
 **Yang TIDAK dipengaruhi `RATE_DROP_ITEM_QUALITY`, dan ini penting:** loot bergrup.
 `LootTemplate::LootGroup::Roll` (`core/src/server/game/Loot/LootMgr.cpp:395`) memilih satu

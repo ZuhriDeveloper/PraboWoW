@@ -63,7 +63,7 @@ param(
     [int]    $DbPort     = 3306,
     [double] $RateXp                 = 5,
     [double] $RateDropItemCommon     = 1,
-    [double] $RateDropItemQuality    = 10,
+    [double] $RateDropItemQuality    = 50,
     [double] $RateDropItemReferenced = 1,
     [double] $RateDropMoney          = 5,
     [double] $RateQuestMoney         = 5,

@@ -7,15 +7,23 @@ Yang kamu butuhkan: client World of Warcraft Cataclysm versi 4.3.4.15595
 akan menolak.
 
 
-LANGKAH 1 - Salin tiga file ini ke folder client kamu
+LANGKAH 1 - Salin SEMUA file ini ke folder client kamu
 ---------------------------------------------------------------------
 
     PraboWoW.exe
     client_launcher_64.exe
     client_patcher_64.dll
+    libssl-3-x64.dll
+    libcrypto-3-x64.dll
+    msvcp140.dll
+    vcruntime140.dll
+    vcruntime140_1.dll
 
-Folder yang benar adalah yang berisi "Wow-64.exe". Ketiganya harus
-berada di folder yang sama.
+Folder yang benar adalah yang berisi "Wow-64.exe". SEMUANYA harus
+berada di folder yang sama - jangan hanya menyalin PraboWoW.exe.
+Lima file terakhir adalah pustaka yang dibutuhkan launcher; tanpa
+salah satunya, Windows akan menampilkan error "... .dll was not
+found".
 
 
 LANGKAH 2 - Klik dua kali PraboWoW.exe

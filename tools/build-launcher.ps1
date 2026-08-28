@@ -132,12 +132,23 @@ if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
 Remove-Item $objDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # --- stage the bundle --------------------------------------------------------------------
-# The two TrinityCore tools come from the local install rather than being rebuilt here;
+# The TrinityCore tools come from the local install rather than being rebuilt here;
 # tools\build-core.ps1 already put them in server\.
 
 Copy-Item (Join-Path $scriptDir 'launcher\BACA-DULU.txt') (Join-Path $OutDir 'BACA-DULU.txt') -Force
 
-$bundled = @('client_launcher_64.exe', 'client_patcher_64.dll')
+# The OpenSSL pair is NOT optional, and leaving it out fails in the most misleading way
+# possible: it works on this machine and nowhere else. client_launcher_64.exe imports
+# libssl-3-x64.dll and libcrypto-3-x64.dll (confirmed with dumpbin /dependents), and a
+# developer box happens to have libcrypto on PATH because Git for Windows ships one in
+# mingw64\bin. A player without Git gets "libcrypto-3-x64.dll was not found" instead.
+# This is the client-side twin of the server-side trap in docs/phase-1-checklist.md.
+$bundled = @(
+    'client_launcher_64.exe',
+    'client_patcher_64.dll',
+    'libssl-3-x64.dll',
+    'libcrypto-3-x64.dll'
+)
 $missing = @()
 foreach ($file in $bundled) {
     $src = Join-Path $ServerDir $file
@@ -145,6 +156,25 @@ foreach ($file in $bundled) {
         Copy-Item $src (Join-Path $OutDir $file) -Force
     } else {
         $missing += $file
+    }
+}
+
+# Both TrinityCore tools are built against the dynamic CRT, so they need the Visual C++
+# runtime. PraboWoW.exe itself is /MT and does not, which is exactly why this gap stays
+# invisible until a player without the redistributable installed runs the bundle.
+# App-local deployment of these three is a supported Microsoft deployment model and saves
+# every player from being told to download and run an installer first.
+$crtNames = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+$crtSource = Get-ChildItem (Join-Path $vs.Path 'VC\Redist\MSVC') -Recurse -Include $crtNames -ErrorAction SilentlyContinue |
+             Where-Object { $_.FullName -match '\\x64\\' -and $_.FullName -notmatch 'onecore|debug|spectre' }
+
+foreach ($name in $crtNames) {
+    $file = $crtSource | Where-Object { $_.Name -eq $name } |
+            Sort-Object { $_.VersionInfo.FileVersionRaw } -Descending | Select-Object -First 1
+    if ($file) {
+        Copy-Item $file.FullName (Join-Path $OutDir $name) -Force
+    } else {
+        $missing += $name
     }
 }
 
