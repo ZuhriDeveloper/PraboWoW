@@ -25,13 +25,19 @@ services:
     # The TDB dump is frozen at January 2022 and carries zero dates that a stock MySQL 8
     # rejects mid-import, which would leave the world database half-populated. Strictness is
     # otherwise kept.
+    #
+    # performance_schema is off because it costs 300-400 MB of baseline RSS for insight
+    # nobody is going to read on a single-player server, and this host has ~6 GB free with
+    # the Ragnarok and monitoring stacks already resident.
     command: >
       --sql-mode=STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION
-      --innodb-buffer-pool-size=${DB_BUFFER_POOL:-1G}
+      --innodb-buffer-pool-size=${DB_BUFFER_POOL:-768M}
+      --performance-schema=OFF
       --max-allowed-packet=64M
     volumes:
       - renowow_db:/var/lib/mysql
       - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    mem_limit: ${DB_MEM_LIMIT:-1200m}
     networks:
       - renowow-net
     # No `ports:` on purpose — the database is reachable only from this stack's network.
@@ -74,7 +80,7 @@ services:
     # They also keep `docker attach` giving a usable TC> console for GM commands.
     tty: true
     stdin_open: true
-    mem_limit: ${WORLD_MEM_LIMIT:-4g}
+    mem_limit: ${WORLD_MEM_LIMIT:-3g}
     networks:
       - renowow-net
 
@@ -100,7 +106,7 @@ services:
       - renowow_logs:/trinity/logs
     tty: true
     stdin_open: true
-    mem_limit: ${AUTH_MEM_LIMIT:-512m}
+    mem_limit: ${AUTH_MEM_LIMIT:-256m}
     networks:
       - renowow-net
 
