@@ -60,23 +60,72 @@ restart berikutnya — ubah `.env` atau `entrypoint.sh`.
 ### 0. Pre-flight
 
 ```bash
-free -h; df -h /; docker stats --no-stream
+free -h; df -h /; swapon --show; docker stats --no-stream
 ```
 
-| Kebutuhan | Perkiraan |
-|---|---|
-| Disk — data client | 5,2 GB |
-| Disk — MySQL (4 database setelah impor TDB) | ~8 GB |
-| Disk — image + TDB sementara | ~1,5 GB |
-| RAM — worldserver dengan mmaps | 3-4 GB |
-| RAM — MySQL 8 | 1-2 GB |
+Kapasitas host per Agustus 2026: **sisa 6 GB RAM, 80 GB disk**, dengan Ragnarok,
+monitoring, dan app web sudah jalan.
 
-Kalau RAM bebas di bawah ~5 GB: turunkan `DB_BUFFER_POOL` dan `WORLD_MEM_LIMIT` di `.env`,
-dan/atau tunda upload `mmaps` (pathfinding mati, tapi server tetap jalan).
+| Kebutuhan | Perkiraan | Muat? |
+|---|---|---|
+| Disk — data client | 5,2 GB | ya |
+| Disk — MySQL (4 database setelah impor TDB) | ~8 GB | ya |
+| Disk — image + TDB sementara | ~1,5 GB | ya |
+| **Disk total** | **~15 GB dari 80 GB** | longgar |
+| RAM — worldserver dengan mmaps | dibatasi 3 GB | pas |
+| RAM — MySQL 8 | dibatasi 1,2 GB | pas |
+| RAM — authserver | dibatasi 256 MB | pas |
+| **RAM total (plafon)** | **4,4 GB dari 6 GB** | sisa ~1,6 GB |
+
+Disk longgar; **RAM yang ketat**. Angka default di `.env.example` sudah disetel untuk
+6 GB itu: buffer pool MySQL 768M dan `performance_schema` dimatikan (menghemat 300-400 MB
+untuk data yang tidak akan pernah dibaca di server satu pemain).
+
+Kalau `swapon --show` kosong, pasang 4 GB swap sekali sebelum deploy. Bukan untuk dipakai
+rutin — swap adalah bantalan supaya lonjakan sesaat (impor TDB, atau grid yang ramai
+sekaligus) tidak berujung OOM killer yang bisa saja memilih MariaDB Ragnarok sebagai
+korban, bukan container kita:
+
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+**Kalau `world` kena OOM dan restart berulang, jangan naikkan `WORLD_MEM_LIMIT`** — tidak
+ada ruang untuk dinaikkan. Yang benar adalah membuang mmaps: pathfinding mati, sekitar
+satu gigabyte kembali, dan server tetap main.
 
 ### 1. DNS
 
-A record `wow.renovin.co.id` → `145.79.10.227`, **DNS only**.
+A record `wow.renovin.co.id` → `145.79.10.227`, **DNS only** (awan abu-abu).
+
+Cloudflare akan memperingatkan:
+
+> This record exposes the IP address used in the A record on grafana.zuhri-dev.com.
+> Enable the proxy status to protect your origin server
+
+Peringatan itu benar secara teknis, dan **tetap harus diabaikan**. Alasannya:
+
+- **Proxy Cloudflare tidak bisa dipakai di sini sama sekali.** Ia hanya meneruskan HTTP/S.
+  Protokol WoW adalah TCP mentah di 3724/8085; kalau record di-proxy, client tidak akan
+  tersambung — bukan "kurang aman", tapi tidak jalan. (Cloudflare Spectrum bisa mem-proxy
+  TCP sembarang, tapi untuk port arbitrer itu paket Enterprise.)
+- **IP-nya sudah lama terbuka.** MateriaRO di host yang sama mempublish TCP 6900/6121/5121
+  tanpa proxy, dan `clientinfo.xml` yang dibagikan ke pemain berisi `145.79.10.227` sebagai
+  teks biasa. Satu record abu-abu lagi tidak menambah kebocoran apa pun.
+- **Yang sesungguhnya melindungi app web bukan penyembunyian IP,** melainkan
+  `scripts/allow-cloudflare-ips.sh` di repo `vps-infra`: ia memasang rule di chain
+  `DOCKER-USER` sehingga port 80/443 hanya menerima trafik dari IP range Cloudflare.
+  Itu tetap berlaku walau IP-nya diketahui semua orang.
+
+Yang **layak** dilakukan justru: pastikan skrip itu memang sudah dijalankan, dan batasi
+SSH karena sekarang IP-nya jelas-jelas publik.
+
+```bash
+sudo iptables -S DOCKER-USER | head        # harus berisi rule Cloudflare, bukan cuma RETURN
+sudo ufw limit 22/tcp                      # rate-limit percobaan login SSH
+```
 
 ### 2. Data client (paling lama)
 
