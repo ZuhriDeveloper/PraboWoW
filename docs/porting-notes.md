@@ -231,3 +231,59 @@ jadi target di balik pohon akan gagal di-cast dan strategy harus benar-benar men
 
 Tidak. Ini keputusan rasa main, bukan bug. Yang mungkin layak adalah config-nya sendiri —
 upstream saat ini mengunci perilaku itu dalam kode tanpa jalan keluar.
+
+---
+
+## `[script]` Gilneas chapter 3 — quest 24468 dan 24616
+
+**File:** `core/src/server/scripts/EasternKingdoms/Gilneas/gilneas_chapter_3.cpp` (baru),
+`core/src/server/scripts/EasternKingdoms/eastern_kingdoms_script_loader.cpp` (dua baris).
+Sisi database ada di `sql/world/2026_08_29_06_00_gilneas_chapter_3_scripts.sql`.
+
+### Kenapa
+
+CPP hanya mengirim `gilneas_chapter_1.cpp` dan `gilneas_chapter_2.cpp`. Semua yang ada
+setelah Greymane Manor tidak pernah ditulis, jadi rantai Gilneas berhenti di sana meskipun
+datanya lengkap. Dua quest pertama sesudah 24438 "Exodus" mentok karena hal yang sama:
+spell dan creature-nya ada, yang hilang cuma yang memicunya.
+
+| Quest | Yang sudah ada di data | Yang hilang |
+|---|---|---|
+| 24468 Stranded at the Marsh | Crash Survivor `37067` (11 spawn, phase 186); `69854 Summon Swamp Crocolisk` → `37078`, dan `RequiredNpcOrGo1` menghitung kill `37078` | 37067 tanpa npcflag, tanpa `npc_spellclick_spells`, tanpa AI — pemain tidak punya apa pun untuk diklik |
+| 24616 Losing Your Tail | `70794` trap, `70795` summon Dark Scout, `70797` talisman (start item 49944), `70796` Aimed Shot, dan `creature_text` untuk `37953` | tidak ada yang memanggil `70794`; target implisit `70797` tidak punya baris `conditions` |
+
+### Isi
+
+- `npc_gilneas_crash_survivor` (37067) — `MoveInLineOfSight` memicu penyergapan saat pemain
+  yang memegang 24468 masuk 12 yard, meng-cast `69854`, lalu mengarahkan crocolisk ke pemain
+  lewat `JustSummoned`. Credit datang dari kill-nya sendiri. `69854` berdurasi tak terbatas
+  (SpellDuration index 21), jadi crocolisk yang ditinggalkan dibersihkan lewat timer.
+- `npc_gilneas_dark_scout` (37953) — `IsSummonedBy` menghadap pemanggil, `Talk(0)`, lalu
+  menyerang; Aimed Shot tiap 8 detik.
+- `spell_gilneas_belysras_talisman` (70797) — memutus `70794` dan membangunkan scout.
+
+### Penyimpangan yang disengaja
+
+Retail memicu `70794` dari sesuatu di jalan sebelah utara Bradshaw Mill — trap itu sendiri
+sudah force-cast `70795`, jadi scout-nya datang sendiri. Tidak ada yang meng-cast `70794` di
+database ini, dan map 654 hanya punya sembilan areatrigger, tidak satu pun di jalan itu.
+Selama penempatan itu belum ada, memakai talisman-lah yang memunculkan sang ranger
+(`AfterCast` meng-cast `70795` kalau belum ada scout di sekitar). Sisanya — dialog, Aimed
+Shot, dan kill credit lewat `RequiredNpcOrGo1` — tetap seperti aslinya.
+
+`37953` juga masih membawa stat placeholder: level 1 dan faction 35 yang bersahabat dengan
+semua orang, jadi dia tidak bisa diserang. Level 11 dan faction 83 diambil dari saudaranya
+di chapter dan phase yang sama (Forsaken Infantry `37692`). Dua nilai itu hasil inferensi,
+bukan sniff.
+
+### Risiko
+
+Rendah. Keduanya file baru plus dua baris registrasi di loader, tidak menyentuh logika
+upstream mana pun, jadi rebase tetap bersih. Yang perlu diawasi saat uji: faction 2208 milik
+`37078` harus benar-benar hostile, dan `MoveInLineOfSight` pada sebelas survivor berarti
+sebelas AI aktif di rawa — dijaga dengan flag `_ambushing` supaya tidak spam summon.
+
+### Layak diusulkan ke upstream?
+
+Ya, kalau penempatan trap `70794` yang asli sudah didapat. Tanpa itu, penyimpangan di atas
+membuatnya lebih cocok tinggal di fork.
