@@ -128,6 +128,12 @@ $overrides = @{
         'mmap.enablePathFinding' = $mmapsValue
         'LineOfSight.IgnoreM2'   = $losIgnoreM2
 
+        # Playerbot module log category (src/prabobots/compat/PrabobotsLog.h). Set here
+        # rather than in .conf.dist for the same reason as the LOS tune: live server
+        # decisions stay outside the submodule. Harmless when PRABOBOTS=0 -- nothing logs
+        # to this category, and an unconfigured one would just inherit root anyway.
+        'Logger.playerbots'      = '4,Console Server'
+
         'Rate.XP.Kill'            = $RateXp
         'Rate.XP.Quest'           = $RateXp
         'Rate.XP.Explore'         = $RateXp

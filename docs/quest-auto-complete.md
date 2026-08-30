@@ -7,6 +7,11 @@ diterima, karena bug-nya butuh perbaikan yang tidak sebanding dengan nilainya
 Ini catatan sadar-utang, bukan solusi. Setiap baris di tabel bisa dibalik dengan
 satu `UPDATE` kalau nanti akar masalahnya benar-benar diperbaiki.
 
+> **Sejak 2026-08-30 kedua quest di bawah praktis tidak terjangkau.** Karakter Worgen
+> baru tidak lagi lahir di Gilneas — lihat
+> [starting-zone-bypass.md](starting-zone-bypass.md). Baris di sini dipertahankan karena
+> tetap berlaku kalau bypass itu di-revert.
+
 ## Metode: complete-on-accept
 
 Tidak ada perubahan di `core/`. Yang diubah hanya kolom objektif di

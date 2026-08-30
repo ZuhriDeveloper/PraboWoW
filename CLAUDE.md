@@ -35,7 +35,7 @@ Alasan: diff tetap bersih saat re-sync dengan upstream TrinityCore / mod-playerb
 |---|---|
 | `core/` | submodule fork CPP TrinityCore, branch kerja `prabowow` |
 | `vendor/mod-playerbots/` | submodule pinned — sumber AI (READ-ONLY) |
-| `vendor/ac-playerbot-core/` | submodule pinned — dibaca hanya untuk diff hook AC (READ-ONLY) |
+| `vendor/ac-playerbot-core/` | **belum ada** — akan di-pin saat diff hook AC dibutuhkan |
 | `src/prabobots/compat/` | shim AzerothCore → TrinityCore |
 | `src/prabobots/bot/` | PlayerbotAI, PlayerbotMgr, fake WorldSession |
 | `src/prabobots/ai/` | engine + strategy/action/trigger/value hasil port |

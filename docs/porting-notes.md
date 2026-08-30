@@ -345,3 +345,248 @@ fungsi ini ada di jalur panas — dipanggil dari tinggi tanah, liquid, line of s
 
 Ya. Jalan pintas ini ada juga di TrinityCore master, dan asumsinya (swap selalu menutupi
 seluruh induk) tidak dipenuhi oleh data Gilneas milik CPP sendiri.
+
+---
+
+## `[fix]` Idle-connection close tanpa guard socket null
+
+**File:** `core/src/server/game/Server/WorldSession.cpp`, `WorldSession::Update`.
+**Fase:** 2 (sesi bot socketless)
+
+### Masalah
+
+`WorldSession::Update` membuka diri dengan:
+
+```cpp
+if (IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
+    m_Socket[CONNECTION_TYPE_REALM]->CloseSocket();
+```
+
+Ini satu-satunya deref telanjang `m_Socket[0]` di fungsi itu — pointer yang sama di-null-check
+**empat kali** 160 baris di bawahnya. Constructor pun sudah toleran socket null: blok
+`if (sock)` melewatkan lookup IP, `ResetTimeOutTime(false)`, dan tulisan `account.online = 1`.
+
+Efeknya justru fatal untuk kita. Karena `ResetTimeOutTime(false)` dilewati, `m_timeOutTime`
+tetap di nilai initializer `0`, dan `IsConnectionIdle()` (`m_timeOutTime <= 0 && !m_inQueue`)
+langsung `true` di tick pertama. Sesi bot crash sebelum sempat login.
+
+### Perbaikan
+
+Dahulukan tes socket supaya short-circuit sebelum lookup RBAC:
+
+```cpp
+if (m_Socket[CONNECTION_TYPE_REALM] && IsConnectionIdle() && !HasPermission(...))
+```
+
+### Kenapa `ResetTimeOutTime(false)` saja tidak cukup
+
+Sekilas patch ini bisa dihindari: `ResetTimeOutTime(false)` mengisi `m_timeOutTime` dengan
+`GameTime::GetGameTime() + CONFIG_SOCKET_TIMEOUTTIME`, sekitar 1,79e9. Tapi:
+
+1. Sesi bot di-tick **dua kali** per world tick (PlayerbotMgr + `Map::Update`), dan
+   `UpdateTimeOutTime` mengurangi `diff` dalam **milidetik** dari nilai **epoch detik**.
+   1,79e9 / 2 ≈ **10 hari uptime**, lalu crash.
+2. Angka itu bukan properti yang dirancang, melainkan bug satuan upstream. Kalau CPP atau
+   TrinityCore memperbaikinya — dan mereka benar untuk itu — headroom runtuh jadi 900 detik.
+
+Membangun fondasi di atas bug yang pantas diperbaiki upstream bukan fondasi. Panggilan
+`ResetTimeOutTime(false)` tetap ada di `PlayerbotMgr::CreateBotSession`, tapi sebagai defence
+in depth, bukan sebagai perbaikan.
+
+### Risiko
+
+Sangat rendah. Untuk sesi asli `m_Socket[0]` selalu non-null saat `Update` jalan, jadi
+perilakunya identik — malah sedikit lebih murah karena RBAC lookup ikut ter-skip.
+
+### Layak diusulkan ke upstream?
+
+Ya, lemah. Defensif dan konsisten dengan kode di sekitarnya, tapi upstream tidak punya jalur
+yang bisa mencapainya, jadi kemungkinan diperdebatkan.
+
+---
+
+## `[hook]` Flag sesi bot dan pembungkaman log paket
+
+**File:** `core/src/server/game/Server/WorldSession.h`, `WorldSession.cpp` (`SendPacket`).
+
+### Masalah
+
+`SendPacket` sudah early-return aman saat socket null, tapi mencatat `TC_LOG_ERROR` setiap
+kali. Bot menerima ratusan paket saat login, dan `Player::SendInitialPacketsAfterAddToMap`
+memanggil `ResetTimeSync` yang membuat blok time-sync di `WorldSession::Update` mengirim satu
+paket lagi **tiap 5 detik selamanya** — dan blok itu justru jalan ketika `ProcessUnsafe()`
+bernilai `false`, yaitu persis filter yang kita pakai. `Server.log` jadi tidak berguna sebagai
+alat verifikasi, padahal itu inti milestone ini.
+
+### Perbaikan
+
+`IsBotSession()` / `SetBotSession()`, default `false`, dipakai menggerbangi satu `TC_LOG_ERROR`.
+
+Alternatifnya menurunkan `Logger.network.opcode` di `worldserver.conf` — nol patch, tapi
+membutakan kita terhadap error opcode player asli. Regresi observability permanen ditukar
+kenyamanan sementara.
+
+### Risiko
+
+Rendah. Murni aditif; satu-satunya perubahan perilaku digerbangi flag yang hanya kita set.
+
+### Layak diusulkan ke upstream?
+
+Tidak. Konsep khusus playerbot.
+
+---
+
+## `[hook]` Sesi bot tidak boleh menghapus bookkeeping online milik owner
+
+**File:** `core/src/server/game/Server/WorldSession.cpp` (destructor, `LogoutPlayer`).
+
+### Masalah
+
+Dua tulisan tanpa syarat mengasumsikan satu sesi per akun:
+
+| Lokasi | Query |
+|---|---|
+| `~WorldSession` | `UPDATE account SET online = 0 WHERE id = ?` |
+| `LogoutPlayer` | `UPDATE characters SET online = 0 WHERE account = ?` |
+
+Komentar core di atas yang kedua menyatakan asumsinya terang-terangan: *"Since each account
+can only have one online character at any given time"*. Alt army melanggar tepat itu — bot
+adalah karakter alt di akun owner sendiri (ADR 0001). Jadi menghancurkan satu sesi bot
+membalik `account.online` milik **owner** jadi 0 saat dia masih main, dan melogout satu bot
+menandai owner **beserta seluruh bot saudaranya** offline.
+
+### Perbaikan
+
+Keduanya digerbangi `if (!IsBotSession())`. Tulisan `online = 1` pasangannya di constructor
+sudah berada di dalam `if (sock)`, jadi patch ini mengembalikan simetri, bukan mengarang
+aturan baru.
+
+### Risiko
+
+Sangat rendah. Perlu dicatat severity-nya paling rendah dari enam patch: `account.online`
+tidak punya pembaca di dalam core sama sekali, dan `characters.online` hanya dibaca
+`.account onlinelist`. Konsumen sebenarnya ada di luar repo (launcher, website).
+
+### Layak diusulkan ke upstream?
+
+Tidak.
+
+---
+
+## `[hook]` `WorldSession::LoginBotPlayer` — titik masuk login socketless
+
+**File:** `core/src/server/game/Server/WorldSession.h`,
+`core/src/server/game/Handlers/CharacterHandler.cpp`.
+
+### Masalah
+
+PlayerbotMgr tidak bisa menjangkau jalur login dari luar core. Tiga hal menutupnya sekaligus:
+
+| Penghalang | Sifat |
+|---|---|
+| `LoginQueryHolder` | class lokal ke `CharacterHandler.cpp:62-73`, tidak terlihat di TU lain |
+| `m_playerLoading` | private, tanpa setter |
+| `ProcessQueryCallbacks()` | private |
+
+### Perbaikan
+
+Fungsi ±18 baris yang mencerminkan `HandleContinuePlayerLogin`, dikurangi dua hal yang hanya
+masuk akal untuk client sungguhan: cek `_legitCharacters` (diisi `HandleCharEnum`, jadi selalu
+kosong untuk bot — PlayerbotMgr memvalidasi kepemilikan karakter sendiri) dan paket
+`ResumeComms` untuk koneksi instance yang bot tidak punya.
+
+Sisanya login standar. Holder selesai lewat `ProcessQueryCallbacks` di `WorldSession::Update`
+yang di-drive PlayerbotMgr tiap world tick, dan callback-nya mendarat di `HandlePlayerLogin`
+yang **tidak diubah sama sekali**.
+
+### Alternatif yang ditolak
+
+- **Replikasi `HandlePlayerLogin` di prabobots.** Badan 300 barisnya tidak bisa dipangkas
+  banyak: `LoadAccountData`, `SendAccountDataTimes`, `m_playerLoading.Clear()`, dan `_player`
+  semuanya private, jadi replikasi justru butuh **lebih banyak** permukaan core daripada hook
+  ini, lalu memelihara salinan yang membusuk diam-diam tiap rebase.
+- **Jalur tanpa patch** lewat `HandleCharEnum` + `HandlePlayerLoginOpcode`. Betul-betul bisa,
+  tapi membeli tiga kopling internal rapuh — semantik pengisian `_legitCharacters`, cabang
+  `_legacyConnectionModeEnabled`, dan `SendConnectToInstance` yang memanggil `make_address()`
+  pada remote address kosong milik sesi socketless. Itu minimality teater, bukan minimality.
+
+### Risiko
+
+Rendah. Tidak pernah dipanggil dari jalur core mana pun, jadi tidak bisa menyentuh player
+asli. Kalau upstream menulis ulang alur login, fungsi ini gagal **saat compile**, bukan
+membusuk diam-diam.
+
+Yang perlu diawasi: ia sengaja melewati `IsLegitCharacterForAccount`, jadi PlayerbotMgr
+**wajib** memvalidasi kepemilikan sendiri. Cek akun di `Player::LoadFromDB` adalah backstop,
+bukan gerbang.
+
+### Layak diusulkan ke upstream?
+
+Tidak.
+
+---
+
+## `[build]` Deklarasi dan wiring opsi `PRABOBOTS`
+
+**File:** `core/cmake/options.cmake`, `core/cmake/showoptions.cmake`,
+`core/src/server/CMakeLists.txt`, `core/src/server/scripts/CMakeLists.txt`.
+
+### Masalah
+
+`tools/build-core.ps1:180` sudah mengirim `-DPRABOBOTS=1` sejak Fase 1, tapi tidak ada file
+CMake yang mendeklarasikannya — jadi ia cache variable tak terpakai yang diam-diam dibuang.
+
+### Perbaikan
+
+Source playerbot ada di `src/prabobots`, **di luar** submodule, supaya edit core tetap sedikit
+dan berlabel. Itu menjadikannya `add_subdirectory` out-of-tree pertama di proyek ini — 43 yang
+sudah ada semuanya child relatif — jadi ia butuh argumen binary dir eksplisit, dan
+`PRABOBOTS_SOURCE_DIR` dibuat cache `PATH`, bukan path relatif yang di-hardcode.
+
+Modul ini **tidak bisa** jadi script module: `GetScriptsBasePath` mengunci
+`${CMAKE_SOURCE_DIR}/src/server/scripts`. Jadi ia di-link `PUBLIC` ke `scripts`, yang
+membawanya transitif ke `worldserver` — `worldserver/CMakeLists.txt` tidak perlu disentuh.
+
+`showoptions.cmake` di-include di `core/CMakeLists.txt:86`, sebelum `add_subdirectory(src)`,
+jadi `add_definitions(-DTRINITY_PRABOBOTS)` di sana menjangkau seluruh subdirektori termasuk
+`scripts` — mengikuti pola `HELGRIND` dan `PERFORMANCE_PROFILING` yang sudah ada di file itu.
+
+Tree yang hilang dijadikan `FATAL_ERROR`, bukan skip diam-diam: `-DPRABOBOTS=1` yang
+menghasilkan core tanpa bot adalah mode gagal terburuk yang tersedia di sini.
+
+### Risiko
+
+Rendah dan terkurung. Semua edit ada di dalam `if(PRABOBOTS)`, yang default `0`.
+
+### Layak diusulkan ke upstream?
+
+Tidak.
+
+---
+
+## `[hook]` Registrasi script playerbot dari `custom_script_loader`
+
+**File:** `core/src/server/scripts/Custom/custom_script_loader.cpp`.
+
+### Masalah
+
+`AddScripts()` yang di-generate CMake tidak akan pernah melihat prabobots, karena
+`GetScriptsBasePath` hanya mem-glob `src/server/scripts`. `AddCustomScripts()` adalah seam
+resmi untuk ini, dan isinya kosong.
+
+### Perbaikan
+
+Deklarasi + panggilan `AddPlayerbotScripts()` di balik `#ifdef TRINITY_PRABOBOTS`.
+
+Ini **satu-satunya `ifdef`** di antara enam patch, dan itu disengaja: lima lainnya ter-compile
+tanpa syarat supaya `PRABOBOTS=0` dan `PRABOBOTS=1` menghasilkan library `game` yang identik,
+bukan dua varian perilaku core. Guard di sini wajib karena tanpanya simbolnya tidak ada dan
+`worldserver` gagal link.
+
+### Risiko
+
+Sangat rendah.
+
+### Layak diusulkan ke upstream?
+
+Tidak.

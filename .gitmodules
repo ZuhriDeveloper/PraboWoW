@@ -1,3 +1,6 @@
 [submodule "core"]
 	path = core
 	url = https://github.com/ZuhriDeveloper/TrinityCore.git
+[submodule "vendor/mod-playerbots"]
+	path = vendor/mod-playerbots
+	url = https://github.com/mod-playerbots/mod-playerbots.git

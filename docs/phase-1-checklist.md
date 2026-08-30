@@ -6,7 +6,7 @@ Target: **karakter berdiri di dunia dan `.gps` mengembalikan koordinat.** Tanpa 
 
 | Langkah | Status |
 |---|---|
-| 1. Clone core | **selesai** — `9da95e6cc9`, branch `prabowow`, + 2 patch |
+| 1. Clone core | **selesai** — branch `prabowow` (pin bergerak seiring patch; lihat `docs/porting-notes.md`) |
 | 2. Build core | **selesai** — Release x64, Ninja, 4 menit 50 detik |
 | 3. Ekstrak data client | **selesai** — dbc 333, maps 7.398, vmaps 17.652 (1,67 GB) |
 | 4. Database | **selesai** — service `PraboWoWMySQL`, 4 DB terisi, TDB 278 MB terimpor |
