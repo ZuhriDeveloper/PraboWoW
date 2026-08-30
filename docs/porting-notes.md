@@ -287,3 +287,61 @@ sebelas AI aktif di rawa — dijaga dengan flag `_ambushing` supaya tidak spam s
 
 Ya, kalau penempatan trap `70794` yang asli sudah didapat. Tanpa itu, penyimpangan di atas
 membuatnya lebih cocok tinggal di fork.
+
+---
+
+## `[fix]` Terrain swap tunggal tidak divalidasi ke grid file
+
+**File:** `core/src/server/game/Phasing/PhasingHandler.cpp`, fungsi `GetTerrainMapId`.
+
+### Gejala
+
+Di Greymane Manor pemain kena **fatigue di dalam ruangan**, tembus lantai saat relog, dan
+`.debug phase` melaporkan `Flags 8` tanpa satu pun phase — padahal `spell_area` sudah benar.
+
+### Kenapa
+
+`GetTerrainMapId` punya jalan pintas: kalau phase shift hanya membawa satu visible map id,
+id itu langsung dikembalikan tanpa memeriksa apakah swap-nya benar-benar punya grid file di
+koordinat tersebut.
+
+```cpp
+if (phaseShift.VisibleMapIds.size() == 1)
+    return phaseShift.VisibleMapIds.begin()->first;   // <- tanpa cek tile
+```
+
+Terrain swap tidak wajib menutupi seluruh map induknya. Di map 654 (Gilneas), dua baris
+`terrain_swap_defaults` hanya punya **11 tile (638)** dan **4 tile (655)** melawan 60 tile
+milik induknya. Syaratnya di `conditions` type 25:
+
+| Swap | Aktif saat |
+|---|---|
+| 638 Gilneas default terrain | quest 14222 **belum** rewarded |
+| 655 Gilneas - Duskmist Shore broken | quest 14386 **sudah** rewarded |
+
+Begitu kondisi pemain menyisakan satu swap saja — dan itu keadaan normal, bukan kasus
+langka — seluruh koordinat map diselesaikan terhadap terrain yang sebagian besar tidak ada.
+Di manor (`-1583, 2555`, grid 34/27) tidak satu pun swap punya tile, jadi `GetGrid`
+mengembalikan nullptr dan `getAreaInfo` tidak menemukan vmap: tanpa tinggi tanah, tanpa area
+id, tanpa line of sight, tanpa data liquid — sementara client menggambar map induk seperti
+biasa. Dari situ semuanya runtuh berurutan, termasuk `GetAreaId` yang jatuh ke area default
+map sehingga zone id berhenti bernilai 4714 dan **seluruh aturan `spell_area` serta
+`phase_area` zona itu ikut mati**.
+
+### Perbaikan
+
+Jalan pintasnya dibuang, biar loop yang sudah ada mengerjakannya: tiap visible map id dicek
+dengan `HasChildTerrainGridFile`, dan kalau tidak ada yang menutupi tile itu, kembali ke map
+induk — persis yang sudah dilakukan jalur multi-swap dengan benar.
+
+### Risiko
+
+Rendah. Biayanya satu lookup bitset per child terrain, dan map tanpa terrain swap tetap
+keluar lebih dulu lewat cek `VisibleMapIds.empty()` di atasnya. Perlu diperhatikan bahwa
+fungsi ini ada di jalur panas — dipanggil dari tinggi tanah, liquid, line of sight, dan
+`PathGenerator` — tapi `_childTerrain` hanya berisi satu atau dua entri.
+
+### Layak diusulkan ke upstream?
+
+Ya. Jalan pintas ini ada juga di TrinityCore master, dan asumsinya (swap selalu menutupi
+seluruh induk) tidak dipenuhi oleh data Gilneas milik CPP sendiri.
