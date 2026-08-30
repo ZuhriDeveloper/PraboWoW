@@ -11,13 +11,13 @@ Tanpa AI.
 | 2. Enam patch core | **selesai** — `70dd4ea` … `801c2a2` di branch `prabowow` |
 | 3. Modul `src/prabobots` | **selesai** — 6 file, `prabobots.lib` ter-link |
 | 4. Build `PRABOBOTS=1` | **selesai** — nol error, `worldserver.exe` ter-install |
-| 5. Build `PRABOBOTS=0` bersih | **belum diverifikasi** |
+| 5. Build `PRABOBOTS=0` bersih | **selesai** — nol error, nol warning, nol referensi prabobots |
 | 6. Uji runtime in-game | **belum dijalankan** |
 
 ## Gerbang lolos Fase 2 Milestone 1
 
 - [x] `PRABOBOTS=1` configure + build tanpa error
-- [ ] `PRABOBOTS=0` build tetap bersih (regresi untuk lima patch `game` tanpa syarat)
+- [x] `PRABOBOTS=0` build tetap bersih (regresi untuk lima patch `game` tanpa syarat)
 - [ ] `.bot add <Alt>` → bot in-world dalam ~1 detik
 - [ ] `Server.log` **nol** baris `Prevented sending of`
 - [ ] Bot punya nameplate, bisa di-target, buff nempel
