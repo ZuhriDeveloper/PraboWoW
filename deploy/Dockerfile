@@ -42,6 +42,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY core/ /src/core/
 
+# The playerbot module lives OUTSIDE the core submodule (CLAUDE.md rule 1: the core fork
+# and vendor/ stay clean), so it needs its own copy and an explicit source dir below.
+# Note this is src/prabobots -- NOT vendor/mod-playerbots, which is read-only reference
+# material that is never compiled and stays excluded by .dockerignore.
+COPY src/prabobots/ /src/prabobots/
+
 # TOOLS=0 deviates from CLAUDE.md's "CMake butuh TOOLS=1" on purpose: the extractors
 # (mapextractor, vmap4extractor, mmaps_generator, client_launcher) only ever run on the
 # Windows machine that owns the client MPQs. Building them here would add CI minutes and
@@ -52,10 +58,21 @@ COPY core/ /src/core/
 # banner reads "unknown (Archived branch)" instead of a commit hash. The real commit is
 # recorded in the image's OCI labels and in the :<sha> tag instead. This does NOT affect
 # the TDB filename, which revision_data.h.in.cmake defines statically.
+
+# Bots are ON for the VPS image. Build a bot-free core with --build-arg PRABOBOTS=0;
+# five of the six core patches compile unconditionally either way, so the two images
+# differ only by the prabobots target and its script registration.
+ARG PRABOBOTS=1
+
+# PRABOBOTS_SOURCE_DIR must be passed explicitly. Its default is relative to the core
+# tree (${CMAKE_SOURCE_DIR}/../src/prabobots), which resolves to /src/src/prabobots here
+# and does not exist -- CMake would stop at the FATAL_ERROR in src/server/CMakeLists.txt.
 RUN cmake -S /src/core -B /build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DSERVERS=1 \
         -DTOOLS=0 \
+        -DPRABOBOTS="${PRABOBOTS}" \
+        -DPRABOBOTS_SOURCE_DIR=/src/prabobots \
         -DSCRIPTS=static \
         -DUSE_COREPCH=1 \
         -DUSE_SCRIPTPCH=1 \

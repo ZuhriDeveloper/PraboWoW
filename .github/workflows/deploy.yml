@@ -7,6 +7,7 @@ on:
     # an hour of runner time rebuilding TrinityCore.
     paths:
       - 'core'
+      - 'src/prabobots/**'
       - 'sql/**'
       - 'deploy/**'
       - '.dockerignore'
@@ -59,6 +60,10 @@ jobs:
           context: .
           file: deploy/Dockerfile
           push: true
+          # The Dockerfile already defaults to 1; stated here so the bot decision is
+          # visible in the workflow rather than buried in a build stage.
+          build-args: |
+            PRABOBOTS=1
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

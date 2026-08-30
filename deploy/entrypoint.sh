@@ -52,6 +52,11 @@ NO_MMAPS="${NO_MMAPS:-0}"
 # or a wagon -- only WMO buildings blocked. Terrain still never blocks: line of sight is
 # vmap models plus game objects and nothing else (core Map.cpp, Map::isInLineOfSight).
 LOS_IGNORE_M2="${LOS_IGNORE_M2:-0}"
+
+# 4 = Debug, which is what makes ".bot add" traceable in Server.log. Drop to 3 (Info) or 2
+# (Warn) once bots are boring. Ignored entirely by an image built with PRABOBOTS=0.
+LOG_LEVEL_PLAYERBOTS="${LOG_LEVEL_PLAYERBOTS:-4}"
+
 TDB_AUTO_DOWNLOAD="${TDB_AUTO_DOWNLOAD:-1}"
 TDB_VERSION="${TDB_VERSION:-434.22011}"
 TDB_ASSET="${TDB_ASSET:-TDB_full_434.22011_2022_01_09.7z}"
@@ -77,6 +82,20 @@ set_conf() {
 
     escaped=$(printf '%s' "$value" | sed -e 's/[\\&|]/\\&/g')
     sed -i -E "s|^${key}[[:space:]]*=.*|${key} = ${escaped}|" "$file"
+}
+
+# Twin of set_conf for keys the upstream .conf.dist does NOT define. set_conf dies on a
+# missing key on purpose -- that means the core config format moved under us -- which is
+# exactly the wrong check for a key upstream never had. Mirrors the $additions table in
+# tools/configure-server.ps1; the two must stay in step.
+add_conf() {
+    local file=$1 key=$2 value=$3
+
+    if grep -qE "^${key}[[:space:]]*=" "$file"; then
+        die "$(basename "$file") already defines '${key}'. It is an upstream key now; move it to set_conf."
+    fi
+
+    printf '%s = %s\n' "$key" "$value" >> "$file"
 }
 
 db_info() { printf '"%s;%s;%s;%s;%s"' "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASSWORD" "$1"; }
@@ -109,6 +128,11 @@ render_world_conf() {
     set_conf "$conf" 'mmap.enablePathFinding' "$mmaps_value"
     set_conf "$conf" 'LineOfSight.IgnoreM2'   "$LOS_IGNORE_M2"
     set_conf "$conf" 'RealmID'               "$REALM_ID"
+
+    # Playerbot module log category (src/prabobots/compat/PrabobotsLog.h). Written even when
+    # the image was built with PRABOBOTS=0: nothing logs to it then, so it is inert rather
+    # than wrong, and that keeps this script independent of how the image was compiled.
+    add_conf "$conf" 'Logger.playerbots' "$LOG_LEVEL_PLAYERBOTS,Console Server"
 
     set_conf "$conf" 'Rate.XP.Kill'    "$RATE_XP"
     set_conf "$conf" 'Rate.XP.Quest'   "$RATE_XP"
