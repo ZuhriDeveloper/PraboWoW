@@ -12,6 +12,8 @@
 #include "PrabobotsLog.h"
 #include "WorldSession.h"
 
+#include <utility>
+
 PlayerbotMgr* PlayerbotMgr::instance()
 {
     static PlayerbotMgr instance;
