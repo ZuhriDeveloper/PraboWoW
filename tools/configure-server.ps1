@@ -128,12 +128,6 @@ $overrides = @{
         'mmap.enablePathFinding' = $mmapsValue
         'LineOfSight.IgnoreM2'   = $losIgnoreM2
 
-        # Playerbot module log category (src/prabobots/compat/PrabobotsLog.h). Set here
-        # rather than in .conf.dist for the same reason as the LOS tune: live server
-        # decisions stay outside the submodule. Harmless when PRABOBOTS=0 -- nothing logs
-        # to this category, and an unconfigured one would just inherit root anyway.
-        'Logger.playerbots'      = '4,Console Server'
-
         'Rate.XP.Kill'            = $RateXp
         'Rate.XP.Quest'           = $RateXp
         'Rate.XP.Explore'         = $RateXp
@@ -159,6 +153,20 @@ $overrides = @{
     'authserver.conf' = [ordered]@{
         'LogsDir'           = "`"$logsDirConf`""
         'LoginDatabaseInfo' = "`"$(New-DbInfo 'auth')`""
+    }
+}
+
+# Keys the upstream .conf.dist does NOT define, appended rather than substituted.
+#
+# $overrides is deliberately strict: a key missing from .dist means the core config format
+# moved under us and we want the loud failure. That check is exactly wrong for a key
+# upstream never had, so those live here instead.
+$additions = @{
+    'worldserver.conf' = [ordered]@{
+        # Playerbot module log category (src/prabobots/compat/PrabobotsLog.h). Lives outside
+        # the submodule for the same reason as the LOS tune: live server decisions are the
+        # deploy layer's. Harmless with PRABOBOTS=0 -- nothing logs to it.
+        'Logger.playerbots' = '4,Console Server'
     }
 }
 
@@ -208,10 +216,22 @@ foreach ($confName in $overrides.Keys) {
         throw "$confName.dist has no setting line for: $($missing -join ', '). The core config format changed; update this script."
     }
 
+    # Appended after the substitution pass so a stale value from an earlier run cannot
+    # survive: $confPath is rewritten from .dist every time, additions included.
+    $extra = $additions[$confName]
+    if ($extra) {
+        $lines += ''
+        $lines += '# --- PraboWoW additions (not present in the upstream .conf.dist) ---'
+        foreach ($key in $extra.Keys) { $lines += "$key = $($extra[$key])" }
+    }
+
     Set-Content -Path $confPath -Value $lines -Encoding ASCII
     Write-Host ("--> wrote {0}" -f $confName) -ForegroundColor Green
-    foreach ($key in $keys.Keys) {
+    $shownKeys = @($keys.Keys)
+    if ($extra) { $shownKeys += @($extra.Keys) }
+    foreach ($key in $shownKeys) {
         $shown = $keys[$key]
+        if ($null -eq $shown) { $shown = $extra[$key] }
         # Never echo the password back to the terminal.
         if ($shown -match ';') { $shown = ($shown -replace ";$([regex]::Escape($DbPassword));", ';********;') }
         Write-Host ("      {0} = {1}" -f $key, $shown) -ForegroundColor DarkGray

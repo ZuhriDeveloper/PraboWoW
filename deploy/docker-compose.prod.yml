@@ -79,6 +79,9 @@ services:
       # Upstream ships 1, which let a player shoot a target from behind a tree. Set it
       # back to 1 and restart if false "cannot see target" near small props gets old.
       LOS_IGNORE_M2: ${LOS_IGNORE_M2:-0}
+      # Verbosity of the playerbots log category. Bots themselves are compiled in, not
+      # switched on here -- see deploy/.env.example. 4 = Debug, 3 = Info, 2 = Warn.
+      LOG_LEVEL_PLAYERBOTS: ${LOG_LEVEL_PLAYERBOTS:-4}
       REALM_ID: ${REALM_ID:-1}
       # worldserver caches realmlist at startup and uses it to tell the client where to open
       # Cataclysm's second connection after character select. The entrypoint writes the row
